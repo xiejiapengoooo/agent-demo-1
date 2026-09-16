@@ -36,8 +36,8 @@ def normalize_mime_type(mime_type: str) -> str:
 
 class BaseParser[ParserResultT](ABC):
     name: ClassVar[str]
-    extensions: ClassVar[tuple[str, ...] | frozenset[str] | str] = ()
-    mime_types: ClassVar[tuple[str, ...] | frozenset[str] | str] = ()
+    extensions: ClassVar[tuple[str, ...]] = ()
+    mime_types: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, source: ParserSource | None = None) -> None:
         self.source = self._coerce_source(source) if source is not None else None
@@ -50,17 +50,11 @@ class BaseParser[ParserResultT](ABC):
 
     @classmethod
     def normalized_extensions(cls) -> frozenset[str]:
-        values = cls.extensions
-        if isinstance(values, str):
-            values = (values,)
-        return frozenset(normalize_extension(value) for value in values)
+        return frozenset(normalize_extension(value) for value in cls.extensions)
 
     @classmethod
     def normalized_mime_types(cls) -> frozenset[str]:
-        values = cls.mime_types
-        if isinstance(values, str):
-            values = (values,)
-        return frozenset(normalize_mime_type(value) for value in values)
+        return frozenset(normalize_mime_type(value) for value in cls.mime_types)
 
     @classmethod
     def can_parse(
