@@ -1,2 +1,4 @@
-def main() -> None:
-    print("Hello from agent-demo-1!")
+from .main import main
+
+if __name__ == "__main__":
+    main()
