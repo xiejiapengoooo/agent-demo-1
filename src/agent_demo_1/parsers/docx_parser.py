@@ -29,7 +29,9 @@ class DocxParser(BaseParser[ParserProviderResult]):
     def parse(
         self, source: ParserSource | None = None, **kwargs: Any
     ) -> ParserProviderResult:
-        return self.mineru_provider.parse(self.validate_source(source))
+        result = self.mineru_provider.parse(self.validate_source(source))
+        print(result)
+        return result
 
 
 __all__ = ["DocxParser"]
