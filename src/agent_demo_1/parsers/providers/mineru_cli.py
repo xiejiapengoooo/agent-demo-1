@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from ..base import ParserSource
-from .base import BaseParserProvider, ParserProviderResult
+from .base import BaseParserProvider
 
 
 class MineruCliError(RuntimeError):
@@ -42,7 +43,7 @@ class MineruCliProvider(BaseParserProvider):
     def parse(
         self,
         source: ParserSource,
-    ) -> ParserProviderResult:
+    ) -> Any:
         source_path = Path(source).expanduser()
         if not source_path.exists():
             raise FileNotFoundError(source_path)
@@ -78,10 +79,38 @@ class MineruCliProvider(BaseParserProvider):
                 message = f"{message}: {detail}"
             raise MineruCliError(message)
 
-        return ParserProviderResult(
-            source=source_path,
-            output=self.output_dir / source_path.stem / self.options.method,
-        )
+        content_list_path = self._content_list_path(source_path)
+        try:
+            with content_list_path.open(encoding="utf-8") as content_file:
+                return json.load(content_file)
+        except OSError as exc:
+            raise MineruCliError(
+                f"MinerU content list could not be read: {content_list_path}"
+            ) from exc
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise MineruCliError(
+                f"MinerU content list is not valid JSON: {content_list_path}"
+            ) from exc
+
+    def _content_list_path(self, source: Path) -> Path:
+        output_root = self.output_dir / source.stem
+        expected_name = f"{source.stem}_content_list_v2.json"
+
+        matches = list(output_root.rglob(expected_name)) if output_root.exists() else []
+
+        if not matches:
+            raise MineruCliError(
+                "MinerU CLI did not produce a content_list_v2 JSON file for "
+                f"{source.name!r} under {output_root}"
+            )
+
+        if len(matches) > 1:
+            raise MineruCliError(
+                "MinerU CLI produced multiple content_list_v2 JSON files for "
+                f"{source.name!r} under {output_root}"
+            )
+
+        return matches[0]
 
     def build_command(
         self,

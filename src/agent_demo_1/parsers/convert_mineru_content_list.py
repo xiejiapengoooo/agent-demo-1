@@ -497,3 +497,6 @@ def _source_path(source: Any) -> str:
             return ""
         return source
     return ""
+
+
+__all__ = ["convert_mineru_content_list_v2"]

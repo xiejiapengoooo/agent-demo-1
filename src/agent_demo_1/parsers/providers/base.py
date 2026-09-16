@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from ..base import ParserSource
 
@@ -21,8 +21,8 @@ class BaseParserProvider(ABC):
     def parse(
         self,
         source: ParserSource,
-    ) -> ParserProviderResult:
-        """Parse ``source`` and write provider artifacts."""
+    ) -> Any:
+        """Parse ``source`` and return the provider's parsed content."""
 
 
 __all__ = ["BaseParserProvider", "ParserProviderResult"]
