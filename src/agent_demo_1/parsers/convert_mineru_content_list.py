@@ -115,6 +115,24 @@ def _convert_block(
                 item["text_level"] = level
         return _final_item(item, block, page_idx, block_type)
 
+    if block_type in LIST_TYPES:
+        list_items = _list_items(content.get("list_items", []))
+        if not list_items:
+            return None
+
+        item = {
+            "type": FinalItem.TEXT,
+            "text": "\n".join(list_items),
+            "list_items": list_items,
+        }
+        list_type = content.get("list_type")
+        if isinstance(list_type, str) and list_type:
+            item["list_type"] = list_type
+        attribute = content.get("attribute")
+        if isinstance(attribute, str) and attribute:
+            item["list_attribute"] = attribute
+        return _final_item(item, block, page_idx, block_type)
+
 
 def _final_item(
     item: dict[str, Any],
@@ -132,8 +150,23 @@ def _final_item(
     return item
 
 
+def _list_items(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        text = _text_value(value)
+        return [text] if text else []
+
+    result: list[str] = []
+    for entry in value:
+        if isinstance(entry, Mapping):
+            entry = entry.get("item_content", [])
+        text = _text_value(entry).strip()
+        if text:
+            result.append(text)
+    return result
+
+
 def _text_value(value: Any) -> str:
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         result = ""
         for part in value:
             if not part:
