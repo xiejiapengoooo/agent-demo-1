@@ -42,12 +42,14 @@ source = { editable = "." }
 dependencies = [
     { name = "dashscope" },
     { name = "mineru", extra = ["all"] },
+    { name = "openai" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dashscope", specifier = ">=1.27.5" },
     { name = "mineru", extras = ["all"], specifier = ">=3.4.5" },
+    { name = "openai", specifier = ">=2.54.0" },
 ]
 
 [[package]]
