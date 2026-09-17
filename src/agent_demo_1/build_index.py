@@ -1,9 +1,14 @@
 from pathlib import Path
 
+from openai import OpenAI
+
 from .parsers import DocxParser, ParserRegistry
+from .summary import image_summary
 
 
 def run():
+    openai_client = OpenAI(base_url="https://token.xiejiapeng.com/v1")
+
     parser_registry = ParserRegistry()
     parser_registry.register(DocxParser)
 
@@ -12,7 +17,19 @@ def run():
     )
 
     result = parser_registry.parse(file)
-    print(result)
+    if not result or not result.get("output"):
+        raise ValueError("no output")
+
+    output = result.get("output")
+    for _, block in enumerate(output):
+        if block.get("type") == "image":
+            summary = image_summary(
+                block.get("img_path"),
+                client=openai_client,
+                captions="\n".join(block.get("image_caption", [])),
+                footnotes="\n".join(block.get("image_footnote", [])),
+            )
+            print(summary)
 
 
 __all__ = ["run"]

@@ -12,7 +12,7 @@ from openai import OpenAI
 
 from .parsers.providers.mineru_cli import MineruCliProvider
 
-SUMMARY_MODEL = "gpt-4.1-mini"
+SUMMARY_MODEL = "gpt-5.6-sol"
 
 
 def image_summary(
@@ -37,7 +37,7 @@ def image_summary(
     - 标注：{captions}
     - 脚注：{footnotes}
 
-    请专注于提供准确、详细的视觉分析，以便于知识检索。"""
+    请专注于提供准确、详细的视觉分析，以便于知识检索。字数不得超过300字。"""
     image_url = _image_url(image_path)
     response = client.responses.create(
         model=SUMMARY_MODEL,
@@ -77,7 +77,7 @@ def _image_url(image_path: str | PathLike[str]) -> str:
         return value
 
     path = Path(image_path)
-    output_root = MineruCliProvider.output_dir / path.stem
+    output_root = MineruCliProvider.output_dir
     matches = list(output_root.rglob(path.name)) if output_root.exists() else []
     if not matches:
         raise FileNotFoundError(path)
@@ -89,7 +89,7 @@ def _image_url(image_path: str | PathLike[str]) -> str:
     if mime_type is None or not mime_type.startswith("image/"):
         raise ValueError(f"unable to determine image type: {path}")
 
-    encoded_image = base64.b64encode(path.read_bytes()).decode("ascii")
+    encoded_image = base64.b64encode(matches[0].read_bytes()).decode("ascii")
     return f"data:{mime_type};base64,{encoded_image}"
 
 
