@@ -1,11 +1,62 @@
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
 from .parsers import DocxParser, ParserRegistry
 from .summary import image_summary
+
+CHUNK_SIZE = 500
+_ISOLATED_CHUNK_TYPES = frozenset({"image", "table"})
+
+
+def chunk_blocks(
+    blocks: Sequence[Mapping[str, Any]],
+    *,
+    chunk_size: int = CHUNK_SIZE,
+) -> list[dict[str, Any]]:
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than 0")
+
+    chunks: list[dict[str, Any]] = []
+    text_blocks: list[str] = []
+
+    def flush_text_blocks() -> None:
+        if not text_blocks:
+            return
+
+        text = "\n".join(text_blocks)
+        for start in range(0, len(text), chunk_size):
+            chunks.append(
+                {
+                    "type": "text",
+                    "text": text[start : start + chunk_size],
+                }
+            )
+        text_blocks.clear()
+
+    for block in blocks:
+        block_type = block.get("type")
+        if block_type in _ISOLATED_CHUNK_TYPES:
+            flush_text_blocks()
+            chunks.append(dict(block))
+            continue
+
+        if block_type == "text":
+            text = block.get("text")
+            if isinstance(text, str) and text:
+                text_blocks.append(text)
+            continue
+
+        # Preserve unsupported block types instead of silently dropping them.
+        flush_text_blocks()
+        chunks.append(dict(block))
+
+    flush_text_blocks()
+    return chunks
 
 
 def html_table_to_markdown(html: str) -> str:
@@ -41,7 +92,7 @@ def html_table_to_markdown(html: str) -> str:
     return "\n".join(result)
 
 
-def run():
+def run(chunk_size: int = CHUNK_SIZE):
     # openai_client = OpenAI(base_url="https://token.xiejiapeng.com/v1")
 
     # parser_registry = ParserRegistry()
@@ -75,7 +126,8 @@ def run():
                 markdown = html_table_to_markdown(table_body)
                 if markdown:
                     block["table_body_markdown"] = markdown
-    print(output)
+    chunks = chunk_blocks(output, chunk_size=chunk_size)
+    print(json.dumps(chunks, ensure_ascii=False, indent=2))
 
 
-__all__ = ["run"]
+__all__ = ["chunk_blocks", "run"]
