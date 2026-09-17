@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
 from collections.abc import Mapping
 from os import PathLike
@@ -12,7 +13,7 @@ from openai import OpenAI
 
 from .parsers.providers.mineru_cli import MineruCliProvider
 
-SUMMARY_MODEL = "gpt-5.6-sol"
+SUMMARY_MODEL = "deepseek-v4.1-flash"
 
 
 def image_summary(
@@ -93,8 +94,4 @@ def _image_url(image_path: str | PathLike[str]) -> str:
     return f"data:{mime_type};base64,{encoded_image}"
 
 
-def table_summary():
-    pass
-
-
-__all__ = ["image_summary", "table_summary"]
+__all__ = ["image_summary"]
