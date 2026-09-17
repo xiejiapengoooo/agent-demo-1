@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import base64
-import json
 import mimetypes
-from collections.abc import Mapping
 from os import PathLike
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from openai import OpenAI

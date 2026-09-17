@@ -1,0 +1,594 @@
+[
+  {
+    "type": "text",
+    "text": "各地区迪士尼乐园度假区客诉处理流程，不同类型投诉（服务态度、设施故障、商品瑕疵）的应对话术与补偿方案模板",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "回答",
+    "text_level": 2,
+    "page_idx": 0,
+    "_mineru_v2_type": "title"
+  },
+  {
+    "type": "text",
+    "text": "各地区迪士尼乐园度假区的客诉处理流程及不同类型投诉的应对话术与补偿方案模板，可以结合我搜索到的资料进行详细分析。以下为综合整理后的回答：",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "一、迪士尼乐园度假区客诉处理流程",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "现场投诉处理",
+    "list_items": [
+      "现场投诉处理"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "ordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "寻找投诉点：游客可在园区内寻找最近的客户服务站，通常位于游客中心或信息亭[1]。\\n详细描述问题：向工作人员清晰、准确地说明问题，包括时间、地点和事件描述。\\n保留证据：拍摄照片或视频作为证明，有助于后续处理。\\n保持冷静：尽管情绪激动，但应保持礼貌，客观陈述问题，以便获取更好的解决方案[1]。",
+    "list_items": [
+      "寻找投诉点：游客可在园区内寻找最近的客户服务站，通常位于游客中心或信息亭[1]。",
+      "详细描述问题：向工作人员清晰、准确地说明问题，包括时间、地点和事件描述。",
+      "保留证据：拍摄照片或视频作为证明，有助于后续处理。",
+      "保持冷静：尽管情绪激动，但应保持礼貌，客观陈述问题，以便获取更好的解决方案[1]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "电话投诉处理",
+    "list_items": [
+      "电话投诉处理"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "ordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "准备好相关信息：包括订单号、问题描述及相关收据或证据[4]。\\n介绍自己：清晰说明身份，并详细描述问题。\\n耐心倾听：客服人员可能会询问问题详情，需冷静并提供所需信息。\\n提出解决方案：如有具体需求，清晰表达期望。\\n记录反馈：记录客服提供的解决方案或承诺的跟进时间[4]。",
+    "list_items": [
+      "准备好相关信息：包括订单号、问题描述及相关收据或证据[4]。",
+      "介绍自己：清晰说明身份，并详细描述问题。",
+      "耐心倾听：客服人员可能会询问问题详情，需冷静并提供所需信息。",
+      "提出解决方案：如有具体需求，清晰表达期望。",
+      "记录反馈：记录客服提供的解决方案或承诺的跟进时间[4]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "在线投诉渠道",
+    "list_items": [
+      "在线投诉渠道"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "ordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "官方网站：通过“联系我们”部分提交问题。\\n社交媒体：直接通过社交媒体联系迪士尼[4]。",
+    "list_items": [
+      "官方网站：通过“联系我们”部分提交问题。",
+      "社交媒体：直接通过社交媒体联系迪士尼[4]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "投诉处理时限",
+    "list_items": [
+      "投诉处理时限"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "ordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "根据国家标准，收到投诉后应在24小时内与投诉人联系，并在10个工作日内将处理结果反馈给游客[15]。\\n对于一般性服务质量投诉，应在5个工作日内处理完毕[15]。",
+    "list_items": [
+      "根据国家标准，收到投诉后应在24小时内与投诉人联系，并在10个工作日内将处理结果反馈给游客[15]。",
+      "对于一般性服务质量投诉，应在5个工作日内处理完毕[15]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "投诉处理流程",
+    "list_items": [
+      "投诉处理流程"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "ordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "快速响应：收到投诉后，应在24小时内与投诉人联系[7]。\\n调查投诉：收集所有相关信息，包括投诉人的姓名、联系方式、投诉内容和时间[7]。\\n沟通解决方案：尽快向投诉人提供解决方案，解释解决措施和解决时间表[7]。\\n跟进沟通：定期更新投诉人有关投诉处理的进展[7]。\\n归档投诉：记录所有投诉并定期审查以识别趋势和改进领域[7]。",
+    "list_items": [
+      "快速响应：收到投诉后，应在24小时内与投诉人联系[7]。",
+      "调查投诉：收集所有相关信息，包括投诉人的姓名、联系方式、投诉内容和时间[7]。",
+      "沟通解决方案：尽快向投诉人提供解决方案，解释解决措施和解决时间表[7]。",
+      "跟进沟通：定期更新投诉人有关投诉处理的进展[7]。",
+      "归档投诉：记录所有投诉并定期审查以识别趋势和改进领域[7]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "投诉处理原则",
+    "list_items": [
+      "投诉处理原则"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "ordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "耐心倾听：游客申述时应耐心倾听，记录投诉情况，积极、热情地为投诉者解决问题[5]。\\n道歉与补偿：对有效投诉，应向游客致歉或做出适当补偿[5]。\\n事后改进：查找引起投诉的原因，及时改进，避免产生新的类似投诉[5]。",
+    "list_items": [
+      "耐心倾听：游客申述时应耐心倾听，记录投诉情况，积极、热情地为投诉者解决问题[5]。",
+      "道歉与补偿：对有效投诉，应向游客致歉或做出适当补偿[5]。",
+      "事后改进：查找引起投诉的原因，及时改进，避免产生新的类似投诉[5]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "二、不同类型投诉的应对话术与补偿方案",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "1. 服务态度投诉",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "应对话术：",
+    "list_items": [
+      "应对话术："
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "“非常抱歉给您带来了不愉快的体验，我们非常重视您的反馈，并已将此事上报给相关部门进行处理。”\\n“请您放心，我们会尽快查明原因，并采取措施避免类似情况再次发生。”\\n“如果您有任何其他需求，请随时告诉我，我会尽力为您解决。”[12]",
+    "list_items": [
+      "“非常抱歉给您带来了不愉快的体验，我们非常重视您的反馈，并已将此事上报给相关部门进行处理。”",
+      "“请您放心，我们会尽快查明原因，并采取措施避免类似情况再次发生。”",
+      "“如果您有任何其他需求，请随时告诉我，我会尽力为您解决。”[12]"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "image",
+    "img_path": "images/4a40915a184c1ee72bf2c134c0d40a512e2a4de65e57d0e09295e1bac81f2807.jpg",
+    "page_idx": 0,
+    "_mineru_v2_type": "image",
+    "summary": "图片为浅绿渐变背景的商务技能考核表。表格五列：序号、内容、技能标准、评判结果。评判结果分“优秀、良好、合格、不合格”四子列。共六行评估项目：\\n1 接到客人投诉；能认真倾听，并做好记录。\\n2 安抚客人；能分析客人心理并诚恳地向客人道歉。\\n3 及时采取解决措施；能对投诉情况进行分析并立即采取行动。\\n4 采取解决措施；以适当的措施解决客人投诉或满足要求。\\n5 回复客人；能准确流利地将处理的情况告知客人。\\n6 记录归档；能将事件经过详细记录在案。\\n表格黑色细边框，黑色中文文字，无人物、图表或图形。评判结果四列均空白，光照均匀。标注：无；脚注：无。"
+  },
+  {
+    "type": "text",
+    "text": "补偿方案：",
+    "list_items": [
+      "补偿方案："
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "根据投诉的严重程度，可提供免费餐饮、门票折扣、酒店优惠等补偿[15]。\\n若涉及员工服务态度问题，可对员工进行培训或调整岗位[12]。",
+    "list_items": [
+      "根据投诉的严重程度，可提供免费餐饮、门票折扣、酒店优惠等补偿[15]。",
+      "若涉及员工服务态度问题，可对员工进行培训或调整岗位[12]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "2. 设施故障投诉",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "应对话术：",
+    "list_items": [
+      "应对话术："
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "“对于设施故障给您带来的不便，我们深表歉意。目前我们正在紧急维修，预计将在X小时内恢复运营。”\\n“如果您愿意等待，我们可以为您安排其他娱乐项目作为补偿。”[1]",
+    "list_items": [
+      "“对于设施故障给您带来的不便，我们深表歉意。目前我们正在紧急维修，预计将在X小时内恢复运营。”",
+      "“如果您愿意等待，我们可以为您安排其他娱乐项目作为补偿。”[1]"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "补偿方案：",
+    "list_items": [
+      "补偿方案："
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "提供免费重新体验机会或替代活动[1]。\\n若设施长时间无法修复，可提供退款或部分退款[15]。",
+    "list_items": [
+      "提供免费重新体验机会或替代活动[1]。",
+      "若设施长时间无法修复，可提供退款或部分退款[15]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "3. 商品瑕疵投诉",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "应对话术：",
+    "list_items": [
+      "应对话术："
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "“非常抱歉给您带来了不愉快的购物体验，我们已将您的反馈转交给相关部门处理。”\\n“如果您愿意，我们可以为您更换商品或提供退款。”[14]",
+    "list_items": [
+      "“非常抱歉给您带来了不愉快的购物体验，我们已将您的反馈转交给相关部门处理。”",
+      "“如果您愿意，我们可以为您更换商品或提供退款。”[14]"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "补偿方案：",
+    "list_items": [
+      "补偿方案："
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "提供商品更换、退款或折扣优惠[14]。\\n若商品无法更换，可提供等值商品或现金补偿[15]。",
+    "list_items": [
+      "提供商品更换、退款或折扣优惠[14]。",
+      "若商品无法更换，可提供等值商品或现金补偿[15]。"
+    ],
+    "list_type": "text_list",
+    "list_attribute": "unordered",
+    "page_idx": 0,
+    "_mineru_v2_type": "list"
+  },
+  {
+    "type": "text",
+    "text": "三、总结",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "迪士尼乐园度假区的客诉处理流程强调快速响应、有效沟通、妥善解决和持续改进。针对不同类型投诉，应根据具体情况采取相应的应对话术和补偿方案，确保游客的满意度和信任度。同时，迪士尼应建立完善的投诉处理机制，确保每一起投诉都能得到妥善处理，并从中吸取经验，不断提升服务质量[1][4][7]。",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "[AI生成]",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "相关事件",
+    "text_level": 2,
+    "page_idx": 0,
+    "_mineru_v2_type": "title"
+  },
+  {
+    "type": "table",
+    "table_body": "<table><tr><td><p><strong>事件名称</strong></p></td><td><p><strong>事件时间</strong></p></td><td><p><strong>事件概述</strong></p></td><td><p><strong>类型</strong></p></td></tr><tr><td><p>迪士尼乐园提供多种投诉渠道</p></td><td><p>2024年10月27日</p></td><td><p>迪士尼乐园通过设立客户服务站、电话热线、官方网站、电子邮件和社交媒体等多种渠道，方便游客进行投诉。</p></td><td><p>投诉渠道</p></td></tr><tr><td><p>迪士尼乐园投诉处理流程标准化</p></td><td><p>2023-06-15</p></td><td><p>迪士尼乐园遵循GB/T 19012等国际标准，制定了详细的投诉处理流程，包括接收、记录、调查、解决、反馈和归档等环节。</p></td><td><p>投诉处理流程</p></td></tr><tr><td><p>迪士尼乐园承诺对投诉进行及时处理与反馈</p></td><td><p>2016-04</p></td><td><p>迪士尼乐园承诺在收到投诉后24小时内联系投诉者，并在10个工作日内给出处理结果，同时会定期审查投诉以改进服务。</p></td><td><p>投诉处理流程</p></td></tr><tr><td><p>迪士尼乐园对有效投诉进行道歉与补偿</p></td><td><p>2011-06-01</p></td><td><p>对于有效的投诉，迪士尼乐园会向游客道歉，并根据情况提供适当的补偿，以维护游客权益。</p></td><td><p>投诉处理原则</p></td></tr><tr><td><p>迪士尼乐园员工有正式的申诉程序</p></td><td><p>2017-09-24</p></td><td><p>迪士尼乐园为员工设立了正式的申诉程序，员工若认为自身权益受损，可先与主管沟通，若无法解决则可提交书面申诉。</p></td><td><p>内部管理</p></td></tr><tr><td><p>迪士尼乐园针对不同类型的投诉制定应对策略</p></td><td><p>2024-01-20</p></td><td><p>针对服务态度、设施故障、商品瑕疵等不同类型的投诉，迪士尼乐园会采取相应的沟通技巧和解决方案，以安抚顾客情绪并解决问题。</p></td><td><p>投诉处理原则</p></td></tr><tr><td><p>迪士尼乐园通过案例培训提升员工处理投诉的能力</p></td><td><p>未明确</p></td><td><p>迪士尼乐园通过培训员工如何处理服务态度类投诉，例如在发生争执时，要求员工安抚客人、分析心理并诚恳道歉。</p></td><td><p>员工培训</p></td></tr><tr><td><p>迪士尼乐园通过满意度调查持续改进服务质量</p></td><td><p>2011-09-29</p></td><td><p>迪士尼乐园会定期进行游客满意度调查，收集意见和建议，以识别服务中的问题并加以改进。</p></td><td><p>持续改进</p></td></tr></table>",
+    "table_type": "simple_table",
+    "table_nest_level": 1,
+    "page_idx": 0,
+    "_mineru_v2_type": "table"
+  },
+  {
+    "type": "text",
+    "text": "相关组织",
+    "text_level": 2,
+    "page_idx": 0,
+    "_mineru_v2_type": "title"
+  },
+  {
+    "type": "table",
+    "table_body": "<table><tr><td><p><strong>组织名称</strong></p></td><td><p><strong>概述</strong></p></td><td><p><strong>类型</strong></p></td></tr><tr><td><p>迪士尼乐园</p></td><td><p>客户投诉的核心对象，负责处理游客在乐园内遇到的各种问题，如服务态度、设施故障等。</p></td><td><p>商业机构</p></td></tr><tr><td><p>客户关系团队</p></td><td><p>负责接收和处理游客投诉的专业团队，旨在解决当前问题并制定公平合理的决议。</p></td><td><p>内部职能部门</p></td></tr><tr><td><p>客户服务经理</p></td><td><p>在处理员工或游客的正式申诉时，是第一个被联系的管理层人员。</p></td><td><p>管理层</p></td></tr><tr><td><p>投诉委员会</p></td><td><p>处理敏感或复杂的投诉，是处理流程中的一个高级别机构。</p></td><td><p>管理机构</p></td></tr><tr><td><p>国家质量监督检验检疫总局</p></td><td><p>制定国家标准化管理委员会发布的《游乐园（场）服务质量》等国家标准，为投诉处理提供法规依据。</p></td><td><p>政府监管机构</p></td></tr><tr><td><p>天津市市场监督管理委员会</p></td><td><p>发布《大型游乐园区服务管理规范》，对游乐园的投诉处理流程提出具体要求。</p></td><td><p>政府监管机构</p></td></tr><tr><td><p>常州中华恐龙园有限公司</p></td><td><p>作为主题公园的代表，其制定的服务规范被用作行业标准，明确了投诉受理和处理制度。</p></td><td><p>商业机构</p></td></tr><tr><td><p>世界宣明会国际 (World Vision International)</p></td><td><p>提供了关于投诉处理机制的通用指南，其分类方法可用于指导迪士尼乐园的投诉处理。</p></td><td><p>非营利组织</p></td></tr></table>",
+    "table_type": "simple_table",
+    "table_nest_level": 1,
+    "page_idx": 0,
+    "_mineru_v2_type": "table"
+  },
+  {
+    "type": "text",
+    "text": "相关人物",
+    "text_level": 2,
+    "page_idx": 0,
+    "_mineru_v2_type": "title"
+  },
+  {
+    "type": "table",
+    "table_body": "<table><tr><td><p><strong>人物名称</strong></p></td><td><p><strong>概述</strong></p></td><td><p><strong>类型</strong></p></td></tr><tr><td><p>游客/顾客</p></td><td><p>是迪士尼乐园服务的接受方，也是投诉的发起者和处理流程的最终受益者。</p></td><td><p>服务对象</p></td></tr><tr><td><p>客服人员</p></td><td><p>在现场或电话中直接与游客沟通，负责倾听、记录并初步处理投诉。</p></td><td><p>服务人员</p></td></tr><tr><td><p>值班经理</p></td><td><p>在收到书面投诉后，负责将投诉事项转交给责任部门并进行初步处理。</p></td><td><p>管理层</p></td></tr><tr><td><p>直接经理</p></td><td><p>对于机构员工的非敏感投诉，是直接负责处理的管理人员。</p></td><td><p>管理层</p></td></tr><tr><td><p>服务员</p></td><td><p>在服务态度类投诉中，是直接与顾客产生冲突并需要被投诉的对象。</p></td><td><p>服务人员</p></td></tr><tr><td><p>员工</p></td><td><p>作为迪士尼乐园的内部人员，其工作态度和行为是服务投诉的重要来源。</p></td><td><p>服务人员</p></td></tr></table>",
+    "table_type": "simple_table",
+    "table_nest_level": 1,
+    "page_idx": 0,
+    "_mineru_v2_type": "table"
+  },
+  {
+    "type": "text",
+    "text": "参考资料",
+    "text_level": 2,
+    "page_idx": 0,
+    "_mineru_v2_type": "title"
+  },
+  {
+    "type": "text",
+    "text": "1. 如何有效投诉迪士尼乐园的入口问题",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "2. 大型游乐园区服务管理规范",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "3. 旅游景区客诉处理培训方案",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "4. 迪士尼总部投诉热线：全球客户服务指南",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "5. 游乐园(场)服务质量",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "6. 主题公园服务规范",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "7. 游乐场服务质量评估.docx - 人人文库",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "8. 主题公园服务规范 Specification for services on theme park",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "9. 宾客投诉处理",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "10. 逆天河东万达海底捞，员工冲食客翻白眼，蜜汁服务态度",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "11. COMPLAINT AND RESPONSE MECHANISMS: A RESOURCE GUIDE",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "12. 任务三 服务态度投诉处理",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "13. AGREEMENT BETWEEN WALT DISNEY PARKS AND RESORTS U.S. AND THE SERVICE TRADES COUNCIL UNION (REGULAR FULL TIME)",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "14. “轮胎生产日期不一致”我们公司服务态度极差！！",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "15. 度假村服务质量规范 Specification for service quality in resort",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "16. 感谢胖东来！服务态度天花板，钱包失而复得很意外",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "17. 直接扔地上？现在自动售货机都这种服务态度？小心以后人工取代你",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "18. 不吐不快！我被上海人“歧视”了？五星级酒店竟然是这样服务态度？气到爆炸！",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "19. 化身肯德基店员！来看我一流的服务态度！",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "20. 乐园条款和条件",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "21. 儿童乐园遭遇客户投诉，可借鉴这些方法！",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "22. 上海迪士尼度假区",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "23. 收藏！儿童乐园门店要关注的重点～",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "24. 儿童乐园运营手册范本 - renrendoc.com",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "25. 上海迪士尼投诉中心：如何有效解决游客问题",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "26. 黄小蕾控诉迪士尼工作人员故意刁难",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "27. 迪士尼投诉电话",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "28. 投诉处理程序、案例分析及突发事件处理",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "29. 儿童乐园遭遇客户投诉如何处理",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  },
+  {
+    "type": "text",
+    "text": "30. 老板！这猫的服务态度很不专业诶！",
+    "page_idx": 0,
+    "_mineru_v2_type": "paragraph"
+  }
+]
