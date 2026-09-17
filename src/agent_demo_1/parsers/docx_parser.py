@@ -27,8 +27,12 @@ class DocxParser(BaseParser[Any]):
         self.mineru_provider = MineruCliProvider()
 
     def parse(self, source: ParserSource | None = None, **kwargs: Any) -> Any:
-        result = self.mineru_provider.parse(self.validate_source(source))
-        return convert_mineru_content_list_v2(result)
+        source = self.validate_source(source)
+        result = self.mineru_provider.parse(source)
+        return {
+            "source": self.source,
+            "output": convert_mineru_content_list_v2(result),
+        }
 
 
 __all__ = ["DocxParser"]

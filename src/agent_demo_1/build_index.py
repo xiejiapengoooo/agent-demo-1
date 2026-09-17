@@ -11,7 +11,8 @@ def run():
         "source/迪士尼乐园度假区客诉处理流程，不同类型投诉（服务态度、设施故障、商品瑕疵）的应对话术与补偿方案模板.docx"
     )
 
-    print(parser_registry.parse(file))
+    result = parser_registry.parse(file)
+    print(result)
 
 
 __all__ = ["run"]
