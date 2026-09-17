@@ -24,14 +24,14 @@ def build_index():
     # if not result or not result.get("output"):
     #     raise ValueError("no output")
 
-    # output = result.get("output")
+    # data = result.get("output")
+
+    # blocks = normalize_blocks(data)
+
+    # chunks = chunk_blocks(blocks)
 
     with Path("mock.json").open(encoding="utf-8") as data_file:
-        data = json.load(data_file)
-
-    blocks = normalize_blocks(data)
-
-    chunks = chunk_blocks(blocks)
+        chunks = json.load(data_file)
 
     print(json.dumps(chunks, ensure_ascii=False))
 
