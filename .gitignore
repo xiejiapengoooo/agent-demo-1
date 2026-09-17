@@ -12,4 +12,5 @@ wheels/
 .DS_Store
 .mineru_output
 source
+data
 mock.*

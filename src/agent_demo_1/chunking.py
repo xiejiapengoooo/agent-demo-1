@@ -1,6 +1,7 @@
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
@@ -53,6 +54,7 @@ def _chunk_page_range(
 
 def chunk_blocks(
     blocks: Sequence[Mapping[str, Any]],
+    document_id: str,
 ) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     text_blocks: list[tuple[str, Any]] = []
@@ -111,6 +113,12 @@ def chunk_blocks(
         chunks.append(isolated_chunk)
 
     flush_text_blocks()
+
+    for chunk_index, chunk in enumerate(chunks):
+        chunk["document_id"] = document_id
+        chunk["chunk_id"] = str(uuid5(NAMESPACE_URL, str(chunk_index)))
+        chunk["order"] = chunk_index
+
     return chunks
 
 
