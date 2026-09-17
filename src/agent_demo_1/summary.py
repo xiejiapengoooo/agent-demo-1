@@ -16,10 +16,10 @@ SUMMARY_MODEL = "deepseek-v4.1-flash"
 def image_summary(
     image_path: str | PathLike[str],
     *,
-    client: OpenAI,
-    captions: str = "",
-    footnotes: str = "",
+    caption: str = "",
+    footnote: str = "",
 ) -> str:
+    openai_client = OpenAI(base_url="https://token.xiejiapeng.com/v1")
     prompt = f"""你是一位专业的图像分析专家。请提供详细、准确的描述。请详细分析这张图片：
 
     对图片的全面详细描述，遵循以下指导：
@@ -32,12 +32,12 @@ def image_summary(
     - 始终使用具体名称而非代词",
 
     附加信息：
-    - 标注：{captions}
-    - 脚注：{footnotes}
+    - 标注：{caption}
+    - 脚注：{footnote}
 
     请专注于提供准确、详细的视觉分析，以便于知识检索。字数不得超过300字。"""
-    image_url = _image_url(image_path)
-    response = client.responses.create(
+    image_url = image_source(image_path)
+    response = openai_client.responses.create(
         model=SUMMARY_MODEL,
         input=[
             {
@@ -60,7 +60,7 @@ def image_summary(
     return summary
 
 
-def _image_url(image_path: str | PathLike[str]) -> str:
+def image_source(image_path: str | PathLike[str]) -> str:
     if not isinstance(image_path, (str, PathLike)):
         raise TypeError("image path must be a path-like value")
 
@@ -91,4 +91,4 @@ def _image_url(image_path: str | PathLike[str]) -> str:
     return f"data:{mime_type};base64,{encoded_image}"
 
 
-__all__ = ["image_summary"]
+__all__ = ["image_source", "image_summary"]

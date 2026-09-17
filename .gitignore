@@ -12,3 +12,4 @@ wheels/
 .DS_Store
 .mineru_output
 source
+mock.*

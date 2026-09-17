@@ -1,8 +1,8 @@
-from .build_index import run
+from .build_index import build_index
 
 
 def main():
-    run()
+    build_index()
 
 
 __all__ = ["main"]
