@@ -28,7 +28,10 @@ def build_index():
 
     # blocks = normalize_blocks(data)
 
-    # chunks = chunk_blocks(blocks)
+    # chunks = chunk_blocks(
+    #     blocks,
+    #     document_id="迪士尼乐园度假区客诉处理流程，不同类型投诉（服务态度、设施故障、商品瑕疵）的应对话术与补偿方案模板.docx",
+    # )
 
     with Path("mock.json").open(encoding="utf-8") as data_file:
         chunks = json.load(data_file)
