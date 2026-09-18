@@ -1,7 +1,7 @@
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
@@ -73,7 +73,7 @@ def chunk_blocks(
 
     for chunk_index, chunk in enumerate(chunks):
         chunk["document_id"] = document_id
-        chunk["chunk_id"] = str(uuid5(NAMESPACE_URL, str(chunk_index)))
+        chunk["chunk_id"] = str(uuid4())
         chunk["order"] = chunk_index
 
     return chunks
