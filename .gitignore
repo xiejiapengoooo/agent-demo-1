@@ -13,4 +13,4 @@ wheels/
 .mineru_output
 source
 data
-mock.*
+mock*.*

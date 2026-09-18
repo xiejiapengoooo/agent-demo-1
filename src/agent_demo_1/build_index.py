@@ -120,7 +120,7 @@ def build_index():
         chunks = json.load(data_file)
 
     embeddings = embed_chunks(chunks)
-    print(len(embeddings))
+    print(embeddings)
     # persist_chunks(
     #     chunks,
     #     embeddings,

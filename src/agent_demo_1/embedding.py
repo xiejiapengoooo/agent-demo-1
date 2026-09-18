@@ -16,8 +16,9 @@ RETRY_DELAY = 2
 
 def embed_chunks(
     chunks: Sequence[Mapping[str, Any]],
-) -> list[list[float]]:
+) -> list[dict[str, Any]]:
     inputs = [_embedding_input(chunk, index) for index, chunk in enumerate(chunks)]
+
     if not inputs:
         return []
 
@@ -25,6 +26,7 @@ def embed_chunks(
         (start, inputs[start : start + BATCH_SIZE])
         for start in range(0, len(inputs), BATCH_SIZE)
     ]
+
     print(
         f"Embedding: 总共 {len(chunks)} 个 chunk，分成 {len(batches)} 批，"
         f"每批最多 {BATCH_SIZE} 个"
@@ -35,6 +37,7 @@ def embed_chunks(
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures: dict[Future[list[list[float]]], tuple[int, int]] = {}
+
         for batch_index, (start, batch) in enumerate(batches):
             future = executor.submit(_embed_batch, batch, batch_index)
             futures[future] = (start, len(batch))
@@ -43,12 +46,15 @@ def embed_chunks(
             for future in as_completed(futures):
                 start, batch_length = futures[future]
                 vectors = future.result()
+
                 if len(vectors) != batch_length:
                     raise RuntimeError(
                         f"embedding batch returned {len(vectors)} vectors; "
                         f"expected {batch_length}"
                     )
+
                 ordered_results[start : start + batch_length] = vectors
+
         except Exception:
             for future in futures:
                 future.cancel()
@@ -58,10 +64,19 @@ def embed_chunks(
         raise RuntimeError("embedding results are incomplete")
 
     results = [vector for vector in ordered_results if vector is not None]
+
     dimensions = {len(vector) for vector in results}
     if len(dimensions) != 1:
         raise RuntimeError(f"embedding dimensions are inconsistent: {dimensions}")
-    return results
+
+    output: list[dict[str, Any]] = []
+
+    for chunk, vector in zip(chunks, results):
+        new_chunk = dict(chunk)
+        new_chunk["vector"] = vector
+        output.append(new_chunk)
+
+    return output
 
 
 def _embedding_input(chunk: Mapping[str, Any], chunk_index: int) -> dict[str, str]:
