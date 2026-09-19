@@ -56,26 +56,6 @@ IMAGE_EXTENSIONS = {
     "image/webp": ".webp",
 }
 
-DOCUMENT_COLUMNS = (
-    ("id", "UUID", True, True),
-    ("file_sha256", "TEXT", True, False),
-    ("file_name", "TEXT", True, False),
-    ("updated_at", "TEXT", True, False),
-    ("status", "TEXT", True, False),
-)
-CHUNK_COLUMNS = (
-    ("id", "UUID", True, True),
-    ("vector_id", "TEXT", True, False),
-    ("document_id", "UUID", True, False),
-    ("chunk_order", "INTEGER", True, False),
-    ("chunk_type", "TEXT", True, False),
-    ("text", "TEXT", True, False),
-    ("page_start", "INTEGER", False, False),
-    ("page_end", "INTEGER", False, False),
-    ("metadata_json", "TEXT", True, False),
-    ("updated_at", "TEXT", True, False),
-)
-
 
 @dataclass(frozen=True, slots=True)
 class Document:
@@ -98,17 +78,6 @@ def initialize_database() -> Path:
     database_path = data_directory / DATABASE_FILENAME
 
     with sqlite3.connect(database_path) as connection:
-        existing_tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
-        }
-        if "documents" in existing_tables:
-            _validate_table(connection, "documents", DOCUMENT_COLUMNS)
-        if "chunks" in existing_tables:
-            _validate_table(connection, "chunks", CHUNK_COLUMNS)
-
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS documents (
