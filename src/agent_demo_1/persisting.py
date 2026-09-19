@@ -123,10 +123,8 @@ def read_pending_documents() -> list[Document]:
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
 
 
-def database_chunk_count(
-    data_directory: str | Path = DATA_DIRECTORY,
-) -> int:
-    database_path = initialize_database(data_directory)
+def database_chunk_count() -> int:
+    database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
         return int(connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
 
@@ -143,10 +141,10 @@ def persist_chunks(
         raise ValueError("at least one document is required")
 
     database_path = initialize_database()
-    existing_chunk_count = database_chunk_count(data_directory)
+    existing_chunk_count = database_chunk_count()
     existing_manifest: dict[str, Any] | None = None
     if existing_chunk_count:
-        existing_index, existing_manifest = load_index(data_directory)
+        existing_index, existing_manifest = load_index()
         if existing_index.ntotal != existing_chunk_count:
             raise ValueError("FAISS and SQLite chunk counts do not match")
         if existing_manifest.get("embedding_model") != embedding_model.strip():
@@ -155,8 +153,8 @@ def persist_chunks(
         base_chunk_count = existing_chunk_count
     else:
         artifact_paths = (
-            data_directory / FAISS_FILENAME,
-            data_directory / MANIFEST_FILENAME,
+            DATA_DIRECTORY / FAISS_FILENAME,
+            DATA_DIRECTORY / MANIFEST_FILENAME,
         )
         stale_artifacts = [path for path in artifact_paths if path.exists()]
         if stale_artifacts:
@@ -254,14 +252,10 @@ def persist_chunks(
         shutil.rmtree(temporary_directory, ignore_errors=True)
 
 
-def load_index(
-    data_directory: str | Path = DATA_DIRECTORY,
-) -> tuple[Any, dict[str, Any]]:
-    """Load a snapshot after verifying FAISS and its SQLite chunk mapping."""
-    data_directory = Path(data_directory)
-    index_path = data_directory / FAISS_FILENAME
-    database_path = data_directory / DATABASE_FILENAME
-    manifest_path = data_directory / MANIFEST_FILENAME
+def load_index() -> tuple[Any, dict[str, Any]]:
+    index_path = DATA_DIRECTORY / FAISS_FILENAME
+    database_path = DATA_DIRECTORY / DATABASE_FILENAME
+    manifest_path = DATA_DIRECTORY / MANIFEST_FILENAME
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -270,7 +264,11 @@ def load_index(
     except json.JSONDecodeError as error:
         raise ValueError(f"invalid index manifest: {manifest_path}") from error
 
-    _verify_checksum(index_path, manifest, "index_sha256")
+    expectedIndexSha256 = manifest.get("index_sha256")
+    if not isinstance(expectedIndexSha256, str):
+        raise TypeError("manifest has no 'index_sha256'")
+    if file_sha256(index_path) != expectedIndexSha256:
+        raise ValueError(f"{index_path.name} checksum does not match the manifest")
 
     with sqlite3.connect(database_path) as connection:
         vector_ids = [
@@ -723,18 +721,6 @@ def _vector(chunk: Mapping[str, Any], index: int) -> list[float]:
             raise ValueError(f"chunk at index {index} has a non-finite vector value")
         vector.append(numeric_value)
     return vector
-
-
-def _verify_checksum(
-    path: Path,
-    manifest: Mapping[str, Any],
-    manifest_key: str,
-) -> None:
-    expected = manifest.get(manifest_key)
-    if not isinstance(expected, str):
-        raise TypeError(f"manifest has no {manifest_key}")
-    if file_sha256(path) != expected:
-        raise ValueError(f"{path.name} checksum does not match the manifest")
 
 
 def _utc_now() -> str:
