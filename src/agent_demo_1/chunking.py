@@ -72,8 +72,6 @@ def chunk_blocks(
     flush_text_blocks()
 
     for chunk_index, chunk in enumerate(chunks):
-        chunk["document_id"] = document_id
-        chunk["chunk_id"] = str(uuid4())
         chunk["order"] = chunk_index
 
     return chunks
