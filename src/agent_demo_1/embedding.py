@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from http import HTTPStatus
 from typing import Any
+from uuid import uuid4
 
 import dashscope
 

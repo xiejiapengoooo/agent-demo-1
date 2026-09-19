@@ -1,13 +1,8 @@
 import json
-import os
-import sqlite3
-from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
-from openai import OpenAI
-
-from .embedding import embed_chunks
+from .embedding import EMBEDDING_MODEL
+from .persisting import persist_chunks
 
 
 def build_index():
@@ -36,7 +31,14 @@ def build_index():
     with Path("mock_1.json").open(encoding="utf-8") as data_file:
         embedded_chunks = json.load(data_file)
 
-    print(embedded_chunks)
+    manifest = persist_chunks(
+        embedded_chunks,
+        embedding_model=EMBEDDING_MODEL,
+    )
+    print(
+        f"Persisted {manifest['chunk_count']} chunks to "
+        f"data/{manifest['files']['sqlite']} and data/{manifest['files']['faiss']}"
+    )
 
 
 __all__ = ["build_index"]
