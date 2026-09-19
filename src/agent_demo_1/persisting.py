@@ -100,6 +100,9 @@ def initialize_database() -> Path:
                 metadata_json TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_vector_id
+            ON chunks (vector_id);
             """
         )
 
@@ -143,34 +146,42 @@ def persist_chunks(
     database_path = initialize_database()
     existing_chunk_count = database_chunk_count()
     existing_manifest: dict[str, Any] | None = None
-    if existing_chunk_count:
+    index_exists = (DATA_DIRECTORY / FAISS_FILENAME).is_file()
+    manifest_exists = (DATA_DIRECTORY / MANIFEST_FILENAME).is_file()
+    if index_exists != manifest_exists:
+        raise ValueError(
+            "FAISS index and manifest must either both exist or both be absent"
+        )
+
+    if index_exists:
         existing_index, existing_manifest = load_index()
         if existing_index.ntotal != existing_chunk_count:
             raise ValueError("FAISS and SQLite chunk counts do not match")
         if existing_manifest.get("embedding_model") != embedding_model.strip():
             raise ValueError("embedding model does not match the existing index")
         base_index = faiss.clone_index(existing_index)
-        base_chunk_count = existing_chunk_count
-    else:
-        artifact_paths = (
-            DATA_DIRECTORY / FAISS_FILENAME,
-            DATA_DIRECTORY / MANIFEST_FILENAME,
+        next_vector_id = _manifest_next_vector_id(
+            existing_manifest,
+            database_path,
         )
-        stale_artifacts = [path for path in artifact_paths if path.exists()]
-        if stale_artifacts:
-            joined = ", ".join(str(path) for path in stale_artifacts)
-            raise ValueError(f"index artifacts exist without chunks: {joined}")
+    else:
+        if existing_chunk_count:
+            raise ValueError("chunks exist without a FAISS index and manifest")
         base_index = None
-        base_chunk_count = 0
+        next_vector_id = 0
+
+    if len(chunks) > int(np.iinfo(np.int64).max) - next_vector_id + 1:
+        raise OverflowError("no FAISS vector ids remain in the int64 range")
 
     rows, vectors, image_assets = _prepare_chunks(
         chunks,
         documents,
-        vector_id_start=base_chunk_count,
+        vector_id_start=next_vector_id,
     )
+    faiss_ids = np.asarray([int(row[1]) for row in rows], dtype=np.int64)
     created_at = _utc_now()
     build_id = str(uuid4())
-    temporary_directory = Path(tempfile.mkdtemp(prefix=".temp-", dir=data_directory))
+    temporary_directory = Path(tempfile.mkdtemp(prefix=".temp-", dir=DATA_DIRECTORY))
 
     try:
         temporary_index = temporary_directory / FAISS_FILENAME
@@ -179,7 +190,7 @@ def persist_chunks(
         temporary_images = temporary_directory / IMAGES_DIRECTORY
 
         if base_index is None:
-            index = _build_faiss_index(vectors)
+            index = _build_faiss_index(vectors, faiss_ids)
         else:
             if int(vectors.shape[1]) != base_index.d:
                 raise ValueError(
@@ -188,7 +199,7 @@ def persist_chunks(
                 )
             normalized_vectors = vectors.copy()
             faiss.normalize_L2(normalized_vectors)
-            base_index.add(normalized_vectors)
+            base_index.add_with_ids(normalized_vectors, faiss_ids)
             index = base_index
         faiss.write_index(index, str(temporary_index))
         index_sha256 = file_sha256(temporary_index)
@@ -200,8 +211,8 @@ def persist_chunks(
             documents,
             completed_at=created_at,
         )
-        document_count, chunk_count, image_count = _database_snapshot_counts(
-            temporary_database
+        document_count, chunk_count, image_count, image_asset_count = (
+            _database_snapshot_counts(temporary_database)
         )
         if chunk_count != index.ntotal:
             raise ValueError("FAISS and SQLite chunk counts do not match")
@@ -215,16 +226,12 @@ def persist_chunks(
             "embedding_dimension": int(vectors.shape[1]),
             "metric": "cosine",
             "normalization": "l2",
-            "index_type": "IndexFlatIP",
+            "index_type": "IndexIDMap2(IndexFlatIP)",
             "document_count": document_count,
             "chunk_count": chunk_count,
             "image_count": image_count,
-            "image_asset_count": (
-                len(image_assets)
-                if existing_manifest is None
-                else int(existing_manifest.get("image_asset_count", 0))
-                + len(image_assets)
-            ),
+            "image_asset_count": image_asset_count,
+            "next_vector_id": next_vector_id + len(rows),
             "index_sha256": index_sha256,
             "files": {
                 "faiss": FAISS_FILENAME,
@@ -237,16 +244,16 @@ def persist_chunks(
             encoding="utf-8",
         )
 
-        (data_directory / IMAGES_DIRECTORY).mkdir(parents=True, exist_ok=True)
+        (DATA_DIRECTORY / IMAGES_DIRECTORY).mkdir(parents=True, exist_ok=True)
         for image in image_assets:
             source = temporary_images / Path(image.relative_path).name
-            destination = data_directory / image.relative_path
+            destination = DATA_DIRECTORY / image.relative_path
             os.replace(source, destination)
 
         # The manifest is published last and is the snapshot commit marker.
-        os.replace(temporary_index, data_directory / FAISS_FILENAME)
+        os.replace(temporary_index, DATA_DIRECTORY / FAISS_FILENAME)
         os.replace(temporary_database, database_path)
-        os.replace(temporary_manifest, data_directory / MANIFEST_FILENAME)
+        os.replace(temporary_manifest, DATA_DIRECTORY / MANIFEST_FILENAME)
         return manifest
     finally:
         shutil.rmtree(temporary_directory, ignore_errors=True)
@@ -254,6 +261,7 @@ def persist_chunks(
 
 def load_index() -> tuple[Any, dict[str, Any]]:
     index_path = DATA_DIRECTORY / FAISS_FILENAME
+    database_path = DATA_DIRECTORY / DATABASE_FILENAME
     manifest_path = DATA_DIRECTORY / MANIFEST_FILENAME
 
     try:
@@ -270,11 +278,87 @@ def load_index() -> tuple[Any, dict[str, Any]]:
         raise ValueError(f"{index_path.name} checksum does not match the manifest")
 
     index = faiss.read_index(str(index_path))
+    if not isinstance(index, faiss.IndexIDMap2):
+        raise TypeError("FAISS index must be IndexIDMap2")
     if index.ntotal != manifest.get("chunk_count"):
         raise ValueError("FAISS vector count does not match the manifest")
     if index.d != manifest.get("embedding_dimension"):
         raise ValueError("FAISS dimension does not match the manifest")
+
+    faiss_ids = sorted(int(value) for value in faiss.vector_to_array(index.id_map))
+    database_ids = sorted(_database_vector_ids(database_path))
+    if faiss_ids != database_ids:
+        raise ValueError("FAISS ids do not match chunks.vector_id values")
+    _manifest_next_vector_id(manifest, database_path)
     return index, manifest
+
+
+def delete_vectors(vector_ids: Sequence[int | str]) -> dict[str, Any]:
+    ids = _normalize_vector_ids(vector_ids)
+    if not ids:
+        raise ValueError("at least one vector_id is required")
+
+    database_path = initialize_database()
+    existing_index, existing_manifest = load_index()
+    existing_ids = set(_faiss_vector_ids(existing_index))
+    missing_ids = sorted(set(ids) - existing_ids)
+    if missing_ids:
+        joined = ", ".join(str(value) for value in missing_ids)
+        raise ValueError(f"vector ids do not exist: {joined}")
+
+    index = faiss.clone_index(existing_index)
+    ids_array = np.asarray(ids, dtype=np.int64)
+    removed_count = int(index.remove_ids(ids_array))
+    if removed_count != len(ids):
+        raise RuntimeError(
+            f"FAISS removed {removed_count} vectors; expected {len(ids)}"
+        )
+
+    created_at = _utc_now()
+    temporary_directory = Path(tempfile.mkdtemp(prefix=".temp-", dir=DATA_DIRECTORY))
+    try:
+        temporary_index = temporary_directory / FAISS_FILENAME
+        temporary_database = temporary_directory / DATABASE_FILENAME
+        temporary_manifest = temporary_directory / MANIFEST_FILENAME
+
+        faiss.write_index(index, str(temporary_index))
+        index_sha256 = file_sha256(temporary_index)
+        _copy_database(database_path, temporary_database)
+        deleted_count = _delete_database_vectors(temporary_database, ids)
+        if deleted_count != len(ids):
+            raise RuntimeError(
+                f"SQLite deleted {deleted_count} chunks; expected {len(ids)}"
+            )
+
+        document_count, chunk_count, image_count, image_asset_count = (
+            _database_snapshot_counts(temporary_database)
+        )
+        if chunk_count != index.ntotal:
+            raise ValueError("FAISS and SQLite chunk counts do not match")
+
+        manifest = dict(existing_manifest)
+        manifest.update(
+            {
+                "build_id": str(uuid4()),
+                "created_at": created_at,
+                "document_count": document_count,
+                "chunk_count": chunk_count,
+                "image_count": image_count,
+                "image_asset_count": image_asset_count,
+                "index_sha256": index_sha256,
+            }
+        )
+        temporary_manifest.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        os.replace(temporary_index, DATA_DIRECTORY / FAISS_FILENAME)
+        os.replace(temporary_database, database_path)
+        os.replace(temporary_manifest, DATA_DIRECTORY / MANIFEST_FILENAME)
+        return manifest
+    finally:
+        shutil.rmtree(temporary_directory, ignore_errors=True)
 
 
 def file_sha256(path: str | Path) -> str:
@@ -398,11 +482,11 @@ def _prepare_chunks(
     return rows, matrix, list(image_assets.values())
 
 
-def _build_faiss_index(vectors: np.ndarray) -> Any:
+def _build_faiss_index(vectors: np.ndarray, faiss_ids: np.ndarray) -> Any:
     normalized_vectors = vectors.copy()
     faiss.normalize_L2(normalized_vectors)
-    index = faiss.IndexFlatIP(int(normalized_vectors.shape[1]))
-    index.add(normalized_vectors)
+    index = faiss.IndexIDMap2(faiss.IndexFlatIP(int(normalized_vectors.shape[1])))
+    index.add_with_ids(normalized_vectors, faiss_ids)
     return index
 
 
@@ -414,9 +498,7 @@ def _write_database_snapshot(
     *,
     completed_at: str,
 ) -> None:
-    with sqlite3.connect(source) as source_connection:
-        with sqlite3.connect(destination) as destination_connection:
-            source_connection.backup(destination_connection)
+    _copy_database(source, destination)
 
     with sqlite3.connect(destination) as connection:
         statuses = dict(connection.execute("SELECT id, status FROM documents"))
@@ -455,16 +537,114 @@ def _write_database_snapshot(
         )
 
 
-def _database_snapshot_counts(path: Path) -> tuple[int, int, int]:
+def _database_snapshot_counts(path: Path) -> tuple[int, int, int, int]:
     with sqlite3.connect(path) as connection:
         document_count = connection.execute(
             "SELECT COUNT(DISTINCT document_id) FROM chunks"
         ).fetchone()[0]
         chunk_count = connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-        image_count = connection.execute(
-            "SELECT COUNT(*) FROM chunks WHERE chunk_type = 'image'"
-        ).fetchone()[0]
-    return int(document_count), int(chunk_count), int(image_count)
+        image_rows = connection.execute(
+            "SELECT metadata_json FROM chunks WHERE chunk_type = 'image'"
+        ).fetchall()
+
+    image_sources = set()
+    for (metadata_json,) in image_rows:
+        try:
+            metadata = json.loads(metadata_json)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError("image chunk has invalid metadata_json") from error
+        source = metadata.get("source")
+        if isinstance(source, str):
+            image_sources.add(source)
+
+    return (
+        int(document_count),
+        int(chunk_count),
+        len(image_rows),
+        len(image_sources),
+    )
+
+
+def _manifest_next_vector_id(
+    manifest: Mapping[str, Any],
+    database_path: Path,
+) -> int:
+    next_vector_id = manifest.get("next_vector_id")
+    if (
+        not isinstance(next_vector_id, int)
+        or isinstance(next_vector_id, bool)
+        or next_vector_id < 0
+        or next_vector_id > int(np.iinfo(np.int64).max) + 1
+    ):
+        raise ValueError("manifest has an invalid next_vector_id")
+
+    vector_ids = _database_vector_ids(database_path)
+    if vector_ids and max(vector_ids) >= next_vector_id:
+        raise ValueError("manifest next_vector_id is not greater than existing ids")
+    return next_vector_id
+
+
+def _database_vector_ids(path: Path) -> list[int]:
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute("SELECT vector_id FROM chunks").fetchall()
+
+    vector_ids = []
+    for (value,) in rows:
+        if not isinstance(value, str) or not value.isdecimal():
+            raise ValueError(f"invalid chunks.vector_id: {value!r}")
+        vector_id = int(value)
+        if vector_id > np.iinfo(np.int64).max:
+            raise ValueError(f"chunks.vector_id is outside int64 range: {value}")
+        vector_ids.append(vector_id)
+
+    if len(vector_ids) != len(set(vector_ids)):
+        raise ValueError("chunks.vector_id values must be unique")
+    return vector_ids
+
+
+def _faiss_vector_ids(index: Any) -> list[int]:
+    if not isinstance(index, faiss.IndexIDMap2):
+        raise TypeError("FAISS index must be IndexIDMap2")
+    return [int(value) for value in faiss.vector_to_array(index.id_map)]
+
+
+def _normalize_vector_ids(vector_ids: Sequence[int | str]) -> list[int]:
+    if isinstance(vector_ids, (str, bytes)):
+        raise TypeError("vector_ids must be a sequence of integers")
+
+    result = []
+    for value in vector_ids:
+        if isinstance(value, bool):
+            raise TypeError(f"invalid vector_id: {value!r}")
+        if isinstance(value, int):
+            vector_id = value
+        elif isinstance(value, str) and value.isdecimal():
+            vector_id = int(value)
+        else:
+            raise TypeError(f"invalid vector_id: {value!r}")
+        if vector_id < 0 or vector_id > np.iinfo(np.int64).max:
+            raise ValueError(f"vector_id is outside int64 range: {value!r}")
+        result.append(vector_id)
+
+    if len(result) != len(set(result)):
+        raise ValueError("vector_ids contain duplicates")
+    return result
+
+
+def _copy_database(source: Path, destination: Path) -> None:
+    with sqlite3.connect(source) as source_connection:
+        with sqlite3.connect(destination) as destination_connection:
+            source_connection.backup(destination_connection)
+
+
+def _delete_database_vectors(path: Path, vector_ids: Sequence[int]) -> int:
+    placeholders = ", ".join("?" for _ in vector_ids)
+    with sqlite3.connect(path) as connection:
+        cursor = connection.execute(
+            f"DELETE FROM chunks WHERE vector_id IN ({placeholders})",
+            tuple(str(value) for value in vector_ids),
+        )
+        return cursor.rowcount
 
 
 def _prepare_image(
@@ -683,6 +863,7 @@ __all__ = [
     "COMPLETED_STATUS",
     "Document",
     "PENDING_STATUS",
+    "delete_vectors",
     "file_sha256",
     "initialize_database",
     "persist_chunks",
