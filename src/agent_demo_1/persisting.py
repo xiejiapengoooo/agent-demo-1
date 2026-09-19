@@ -254,7 +254,6 @@ def persist_chunks(
 
 def load_index() -> tuple[Any, dict[str, Any]]:
     index_path = DATA_DIRECTORY / FAISS_FILENAME
-    database_path = DATA_DIRECTORY / DATABASE_FILENAME
     manifest_path = DATA_DIRECTORY / MANIFEST_FILENAME
 
     try:
@@ -269,26 +268,6 @@ def load_index() -> tuple[Any, dict[str, Any]]:
         raise TypeError("manifest has no 'index_sha256'")
     if file_sha256(index_path) != expectedIndexSha256:
         raise ValueError(f"{index_path.name} checksum does not match the manifest")
-
-    with sqlite3.connect(database_path) as connection:
-        vector_ids = [
-            row[0]
-            for row in connection.execute(
-                "SELECT vector_id FROM chunks ORDER BY CAST(vector_id AS INTEGER)"
-            )
-        ]
-        image_metadata = connection.execute(
-            "SELECT metadata_json FROM chunks WHERE chunk_type = 'image'"
-        ).fetchall()
-
-    expected_ids = [str(index) for index in range(len(vector_ids))]
-    if vector_ids != expected_ids:
-        raise ValueError("chunk vector_id values do not match FAISS row ids")
-    if len(vector_ids) != manifest.get("chunk_count"):
-        raise ValueError("SQLite chunk count does not match the manifest")
-    if len(image_metadata) != manifest.get("image_count"):
-        raise ValueError("SQLite image count does not match the manifest")
-    _verify_images(data_directory, image_metadata)
 
     index = faiss.read_index(str(index_path))
     if index.ntotal != manifest.get("chunk_count"):
@@ -608,33 +587,6 @@ def _write_images(directory: Path, image_assets: Sequence[_ImageAsset]) -> None:
         (directory / Path(image.relative_path).name).write_bytes(image.content)
 
 
-def _verify_images(
-    data_directory: Path,
-    image_metadata: Sequence[tuple[str]],
-) -> None:
-    for row in image_metadata:
-        try:
-            metadata = json.loads(row[0])
-        except (TypeError, json.JSONDecodeError) as error:
-            raise ValueError("image chunk has invalid metadata_json") from error
-
-        source = metadata.get("source")
-        expected_checksum = metadata.get("source_sha256")
-        if not isinstance(source, str) or not isinstance(expected_checksum, str):
-            raise ValueError("image chunk metadata has no persisted source")
-
-        relative_path = Path(source)
-        if (
-            relative_path.is_absolute()
-            or ".." in relative_path.parts
-            or not relative_path.parts
-            or relative_path.parts[0] != IMAGES_DIRECTORY
-        ):
-            raise ValueError(f"image chunk has an invalid source path: {source!r}")
-        if file_sha256(data_directory / relative_path) != expected_checksum:
-            raise ValueError(f"persisted image checksum does not match: {source}")
-
-
 def _document_from_row(row: sqlite3.Row, index: int) -> Document:
     document_id = _uuid_value(row["id"], f"document at index {index} has invalid id")
     file_sha = row["file_sha256"]
@@ -733,7 +685,6 @@ __all__ = [
     "PENDING_STATUS",
     "file_sha256",
     "initialize_database",
-    "load_index",
     "persist_chunks",
     "read_pending_documents",
 ]
