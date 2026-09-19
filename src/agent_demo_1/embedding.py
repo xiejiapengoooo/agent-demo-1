@@ -4,7 +4,6 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from http import HTTPStatus
 from typing import Any
-from uuid import uuid4
 
 import dashscope
 
@@ -200,4 +199,4 @@ def _response_value(response: Any, key: str, default: Any = None) -> Any:
     return getattr(response, key, default)
 
 
-__all__ = ["embed_chunks"]
+__all__ = ["EMBEDDING_MODEL", "embed_chunks"]
