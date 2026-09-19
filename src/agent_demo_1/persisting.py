@@ -123,7 +123,9 @@ def read_pending_documents() -> list[Document]:
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
 
 
-def database_chunk_count(data_directory: str | Path = DATA_DIRECTORY) -> int:
+def database_chunk_count(
+    data_directory: str | Path = DATA_DIRECTORY,
+) -> int:
     database_path = initialize_database(data_directory)
     with sqlite3.connect(database_path) as connection:
         return int(connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
@@ -134,22 +136,40 @@ def persist_chunks(
     *,
     documents: Sequence[Document],
     embedding_model: str,
-    data_directory: str | Path = DATA_DIRECTORY,
 ) -> dict[str, Any]:
-    """Persist the first complete SQLite and FAISS snapshot."""
     if not isinstance(embedding_model, str) or not embedding_model.strip():
         raise ValueError("embedding_model must be a non-empty string")
     if not documents:
         raise ValueError("at least one document is required")
 
-    data_directory = Path(data_directory)
-    database_path = initialize_database(data_directory)
-    if database_chunk_count(data_directory):
-        raise RuntimeError(
-            "chunks already exist; incremental index updates are not implemented"
+    database_path = initialize_database()
+    existing_chunk_count = database_chunk_count(data_directory)
+    existing_manifest: dict[str, Any] | None = None
+    if existing_chunk_count:
+        existing_index, existing_manifest = load_index(data_directory)
+        if existing_index.ntotal != existing_chunk_count:
+            raise ValueError("FAISS and SQLite chunk counts do not match")
+        if existing_manifest.get("embedding_model") != embedding_model.strip():
+            raise ValueError("embedding model does not match the existing index")
+        base_index = faiss.clone_index(existing_index)
+        base_chunk_count = existing_chunk_count
+    else:
+        artifact_paths = (
+            data_directory / FAISS_FILENAME,
+            data_directory / MANIFEST_FILENAME,
         )
+        stale_artifacts = [path for path in artifact_paths if path.exists()]
+        if stale_artifacts:
+            joined = ", ".join(str(path) for path in stale_artifacts)
+            raise ValueError(f"index artifacts exist without chunks: {joined}")
+        base_index = None
+        base_chunk_count = 0
 
-    rows, vectors, image_assets = _prepare_chunks(chunks, documents)
+    rows, vectors, image_assets = _prepare_chunks(
+        chunks,
+        documents,
+        vector_id_start=base_chunk_count,
+    )
     created_at = _utc_now()
     build_id = str(uuid4())
     temporary_directory = Path(tempfile.mkdtemp(prefix=".temp-", dir=data_directory))
@@ -160,7 +180,18 @@ def persist_chunks(
         temporary_manifest = temporary_directory / MANIFEST_FILENAME
         temporary_images = temporary_directory / IMAGES_DIRECTORY
 
-        index = _build_faiss_index(vectors)
+        if base_index is None:
+            index = _build_faiss_index(vectors)
+        else:
+            if int(vectors.shape[1]) != base_index.d:
+                raise ValueError(
+                    f"embedding dimension {vectors.shape[1]} does not match "
+                    f"existing index dimension {base_index.d}"
+                )
+            normalized_vectors = vectors.copy()
+            faiss.normalize_L2(normalized_vectors)
+            base_index.add(normalized_vectors)
+            index = base_index
         faiss.write_index(index, str(temporary_index))
         index_sha256 = file_sha256(temporary_index)
 
@@ -171,7 +202,11 @@ def persist_chunks(
             documents,
             completed_at=created_at,
         )
-        sqlite_sha256 = file_sha256(temporary_database)
+        document_count, chunk_count, image_count = _database_snapshot_counts(
+            temporary_database
+        )
+        if chunk_count != index.ntotal:
+            raise ValueError("FAISS and SQLite chunk counts do not match")
         _write_images(temporary_images, image_assets)
 
         manifest = {
@@ -183,12 +218,16 @@ def persist_chunks(
             "metric": "cosine",
             "normalization": "l2",
             "index_type": "IndexFlatIP",
-            "document_count": len(documents),
-            "chunk_count": len(rows),
-            "image_count": sum(row[4] == "image" for row in rows),
-            "image_asset_count": len(image_assets),
+            "document_count": document_count,
+            "chunk_count": chunk_count,
+            "image_count": image_count,
+            "image_asset_count": (
+                len(image_assets)
+                if existing_manifest is None
+                else int(existing_manifest.get("image_asset_count", 0))
+                + len(image_assets)
+            ),
             "index_sha256": index_sha256,
-            "sqlite_sha256": sqlite_sha256,
             "files": {
                 "faiss": FAISS_FILENAME,
                 "sqlite": DATABASE_FILENAME,
@@ -218,7 +257,7 @@ def persist_chunks(
 def load_index(
     data_directory: str | Path = DATA_DIRECTORY,
 ) -> tuple[Any, dict[str, Any]]:
-    """Load a snapshot after verifying its files and FAISS-to-chunk mapping."""
+    """Load a snapshot after verifying FAISS and its SQLite chunk mapping."""
     data_directory = Path(data_directory)
     index_path = data_directory / FAISS_FILENAME
     database_path = data_directory / DATABASE_FILENAME
@@ -232,7 +271,6 @@ def load_index(
         raise ValueError(f"invalid index manifest: {manifest_path}") from error
 
     _verify_checksum(index_path, manifest, "index_sha256")
-    _verify_checksum(database_path, manifest, "sqlite_sha256")
 
     with sqlite3.connect(database_path) as connection:
         vector_ids = [
@@ -273,6 +311,8 @@ def file_sha256(path: str | Path) -> str:
 def _prepare_chunks(
     chunks: Sequence[Mapping[str, Any]],
     documents: Sequence[Document],
+    *,
+    vector_id_start: int = 0,
 ) -> tuple[list[tuple[Any, ...]], np.ndarray, list[_ImageAsset]]:
     if not chunks:
         raise ValueError("at least one chunk is required")
@@ -357,7 +397,7 @@ def _prepare_chunks(
         rows.append(
             (
                 chunk_id,
-                str(index),
+                str(vector_id_start + index),
                 document_id,
                 chunk_order,
                 chunk_type,
@@ -408,6 +448,12 @@ def _write_database_snapshot(
                 raise RuntimeError(
                     f"document {document.id} is no longer in pending status"
                 )
+            existing_chunk = connection.execute(
+                "SELECT 1 FROM chunks WHERE document_id = ? LIMIT 1",
+                (document.id,),
+            ).fetchone()
+            if existing_chunk is not None:
+                raise RuntimeError(f"document {document.id} already has chunks")
 
         connection.executemany(
             """
@@ -430,6 +476,18 @@ def _write_database_snapshot(
             "UPDATE documents SET status = ?, updated_at = ? WHERE id = ?",
             ((COMPLETED_STATUS, completed_at, document.id) for document in documents),
         )
+
+
+def _database_snapshot_counts(path: Path) -> tuple[int, int, int]:
+    with sqlite3.connect(path) as connection:
+        document_count = connection.execute(
+            "SELECT COUNT(DISTINCT document_id) FROM chunks"
+        ).fetchone()[0]
+        chunk_count = connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+        image_count = connection.execute(
+            "SELECT COUNT(*) FROM chunks WHERE chunk_type = 'image'"
+        ).fetchone()[0]
+    return int(document_count), int(chunk_count), int(image_count)
 
 
 def _prepare_image(
@@ -685,11 +743,8 @@ def _utc_now() -> str:
 
 __all__ = [
     "COMPLETED_STATUS",
-    "DATA_DIRECTORY",
-    "DATABASE_FILENAME",
     "Document",
     "PENDING_STATUS",
-    "database_chunk_count",
     "file_sha256",
     "initialize_database",
     "load_index",
