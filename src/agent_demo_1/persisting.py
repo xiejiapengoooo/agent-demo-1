@@ -8,10 +8,12 @@ import os
 import shutil
 import sqlite3
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import RLock
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, unquote_to_bytes, urlparse
@@ -33,6 +35,7 @@ DONE_STATUS = "done"
 FAILED_STATUS = "failed"
 SCHEMA_VERSION = "1.0.0"
 IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 30
+_STORE_LOCK = RLock()
 
 CORE_FIELDS = frozenset(
     {
@@ -78,6 +81,18 @@ class DocumentAlreadyExistsError(ValueError):
     """Raised when a document with the same name or content already exists."""
 
 
+class DocumentProcessingError(ValueError):
+    """Raised when deletion would interrupt document processing."""
+
+
+@contextmanager
+def _locked_store() -> Generator[None]:
+    """Keep SQLite/FAISS snapshot reads and writes consistent within this process."""
+    with _STORE_LOCK:
+        yield
+
+
+@_locked_store()
 def initialize_database() -> Path:
     data_directory = Path(DATA_DIRECTORY)
     data_directory.mkdir(parents=True, exist_ok=True)
@@ -113,6 +128,7 @@ def initialize_database() -> Path:
     return database_path
 
 
+@_locked_store()
 def register_document(file_name: str, file_digest: str) -> Document:
     if not isinstance(file_name, str) or not file_name.strip():
         raise ValueError("file_name must be a non-empty string")
@@ -168,6 +184,7 @@ def register_document(file_name: str, file_digest: str) -> Document:
     return document
 
 
+@_locked_store()
 def read_documents() -> list[Document]:
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
@@ -183,6 +200,7 @@ def read_documents() -> list[Document]:
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
 
 
+@_locked_store()
 def delete_document(document_id: str) -> Document | None:
     database_path = initialize_database()
     index_path = DATA_DIRECTORY / FAISS_FILENAME
@@ -201,6 +219,10 @@ def delete_document(document_id: str) -> Document | None:
             return None
 
         document = _document_from_row(row, 0)
+        if document.status == PROCESSING_STATUS:
+            raise DocumentProcessingError(
+                "document is processing and cannot be deleted"
+            )
         document_chunks = connection.execute(
             """
             SELECT vector_id, metadata_json
@@ -282,6 +304,7 @@ def delete_document(document_id: str) -> Document | None:
     return document
 
 
+@_locked_store()
 def read_waiting_documents() -> list[Document]:
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
@@ -299,6 +322,7 @@ def read_waiting_documents() -> list[Document]:
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
 
 
+@_locked_store()
 def mark_documents_processing(document_ids: Sequence[str]) -> list[Document]:
     ids = list(dict.fromkeys(document_ids))
     if not ids:
@@ -307,6 +331,7 @@ def mark_documents_processing(document_ids: Sequence[str]) -> list[Document]:
     database_path = initialize_database()
     placeholders = ",".join("?" for _ in ids)
     with sqlite3.connect(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
         connection.row_factory = sqlite3.Row
         documents_by_id = {
             row["id"]: row
@@ -345,6 +370,7 @@ def mark_documents_processing(document_ids: Sequence[str]) -> list[Document]:
         ]
 
 
+@_locked_store()
 def mark_documents_failed(document_ids: Sequence[str]) -> None:
     ids = list(dict.fromkeys(document_ids))
     if not ids:
@@ -366,12 +392,14 @@ def mark_documents_failed(document_ids: Sequence[str]) -> None:
         )
 
 
+@_locked_store()
 def database_chunk_count() -> int:
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
         return int(connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
 
 
+@_locked_store()
 def persist_chunks(
     chunks: Sequence[Mapping[str, Any]],
     *,
@@ -488,6 +516,7 @@ def persist_chunks(
         shutil.rmtree(temporary_directory, ignore_errors=True)
 
 
+@_locked_store()
 def load_index() -> tuple[Any, dict[str, Any]]:
     index_path = DATA_DIRECTORY / FAISS_FILENAME
     database_path = DATA_DIRECTORY / DATABASE_FILENAME
@@ -1001,6 +1030,7 @@ def _utc_now() -> str:
 __all__ = [
     "Document",
     "DocumentAlreadyExistsError",
+    "DocumentProcessingError",
     "delete_document",
     "mark_documents_failed",
     "mark_documents_processing",
