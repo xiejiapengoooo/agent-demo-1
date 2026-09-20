@@ -43,6 +43,7 @@ dependencies = [
     { name = "bs4" },
     { name = "dashscope" },
     { name = "faiss-cpu" },
+    { name = "fastapi" },
     { name = "mineru", extra = ["all"] },
     { name = "openai" },
 ]
@@ -52,6 +53,7 @@ requires-dist = [
     { name = "bs4", specifier = ">=0.0.2" },
     { name = "dashscope", specifier = ">=1.27.5" },
     { name = "faiss-cpu", specifier = ">=1.12.0" },
+    { name = "fastapi", specifier = ">=0.141.1" },
     { name = "mineru", extras = ["all"], specifier = ">=3.4.5" },
     { name = "openai", specifier = ">=2.54.0" },
 ]
