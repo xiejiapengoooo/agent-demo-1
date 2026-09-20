@@ -65,7 +65,6 @@
                   <h2 id="documents-title">文档列表 <span class="badge badge-sm list-count" id="document-count">0</span></h2>
                   <p>按添加时间展示当前工作区的文档</p>
                 </div>
-                <button class="btn btn-sm quiet-button" id="refresh-documents" type="button" title="刷新文档列表">↻ 刷新</button>
               </div>
             </div>
             <div id="documents-region" aria-live="polite">
@@ -87,7 +86,6 @@
       const removeFileButton = document.getElementById("remove-file-button");
       const submitButton = form.querySelector("button[type=submit]");
       const uploadStatus = document.getElementById("upload-status");
-      const refreshButton = document.getElementById("refresh-documents");
       const documentsRegion = document.getElementById("documents-region");
       const documentCount = document.getElementById("document-count");
       const connectionDot = document.getElementById("connection-dot");
@@ -147,7 +145,17 @@
         pendingMetric.textContent = documents.filter((document) => ["waiting", "processing"].includes(document.status)).length;
         completedMetric.textContent = documents.filter((document) => document.status === "done").length;
         if (!documents.length) {
-          documentsRegion.innerHTML = '<div class="empty-state"><strong>还没有文档</strong><span>上传第一个文件，开始建立你的文档库。</span></div>';
+          documentsRegion.innerHTML = `<div class="empty-state">
+            <div>
+              <span class="empty-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2ZM14 2v6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <strong>还没有文档</strong>
+              <span>上传第一个文件，开始建立你的文档库。</span>
+            </div>
+          </div>`;
           return;
         }
         documentsRegion.innerHTML = `<ul class="m-0 list-none p-0">${documents.map((document) => {
@@ -180,7 +188,6 @@
 
       async function loadDocuments({ showLoading = false } = {}) {
         if (showLoading) documentsRegion.innerHTML = '<div class="list-loading">正在读取文档列表……</div>';
-        refreshButton.disabled = true;
         try {
           const response = await fetch("/documents", { headers: { Accept: "application/json" } });
           if (!response.ok) throw new Error(await readError(response, "文档列表读取失败"));
@@ -202,8 +209,6 @@
           pendingMetric.textContent = "—";
           completedMetric.textContent = "—";
           documentsRegion.innerHTML = `<div class="list-error">${escapeHtml(error.message || "文档列表读取失败")}</div>`;
-        } finally {
-          refreshButton.disabled = false;
         }
       }
 
@@ -262,7 +267,6 @@
         showSelectedFile(file);
       });
 
-      refreshButton.addEventListener("click", () => loadDocuments({ showLoading: true }));
       documentsRegion.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-document-id]");
         if (!button) return;
