@@ -182,6 +182,7 @@
           const statusClass = ["waiting", "processing", "done", "failed"].includes(document.status) ? document.status : "failed";
           const extension = (document.file_name || "文档").split(".").pop().slice(0, 4).toUpperCase();
           const iconClass = ["waiting", "processing"].includes(document.status) ? " is-processing" : "";
+          const deleteDisabled = document.status === "processing" ? ' disabled title="处理中，暂时无法删除"' : "";
           return `<li class="document-item">
             <div class="document-icon${iconClass}" aria-hidden="true">${escapeHtml(extension)}</div>
             <div class="min-w-0">
@@ -191,7 +192,7 @@
                 <span>更新于 ${escapeHtml(formatDate(document.updated_at))}</span>
               </div>
             </div>
-            <button class="btn btn-ghost btn-sm danger-button" type="button" data-document-id="${escapeHtml(document.id)}" data-document-name="${escapeHtml(document.file_name)}">删除</button>
+            <button class="btn btn-ghost btn-sm danger-button" type="button" data-document-id="${escapeHtml(document.id)}" data-document-name="${escapeHtml(document.file_name)}"${deleteDisabled}>删除</button>
           </li>`;
         }).join("")}</ul>`;
       }
@@ -309,7 +310,7 @@
 
       documentsRegion.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-document-id]");
-        if (!button) return;
+        if (!button || button.disabled) return;
         const documentName = button.dataset.documentName || "这个文档";
         if (!window.confirm(`确定要删除“${documentName}”吗？此操作无法撤销。`)) return;
         button.disabled = true;
@@ -319,6 +320,7 @@
           await loadDocuments();
         } catch (error) {
           button.disabled = false;
+          await loadDocuments();
           window.alert(error.message || "删除失败");
         }
       });

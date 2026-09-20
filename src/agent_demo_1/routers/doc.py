@@ -15,12 +15,14 @@ from fastapi import (
     status,
 )
 
-from ..build_index import build_index
+from ..build_index import process_documents
 from ..persisting import (
     DATA_DIRECTORY,
     WAITING_STATUS,
     Document,
     DocumentAlreadyExistsError,
+    DocumentProcessingError,
+    mark_documents_processing,
     read_documents,
     read_waiting_documents,
     register_document,
@@ -117,7 +119,13 @@ async def delete_document(
             )
         source_paths.append(source_path)
 
-    deleted = delete_document_record(document.id)
+    try:
+        deleted = delete_document_record(document.id)
+    except DocumentProcessingError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
     if deleted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -167,7 +175,14 @@ async def start_document_processing(
         )
 
     if ids:
-        background_tasks.add_task(build_index, ids)
+        try:
+            processing_documents = mark_documents_processing(ids)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
+        background_tasks.add_task(process_documents, processing_documents)
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
