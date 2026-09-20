@@ -6,14 +6,17 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
 from ..persisting import (
+    DATA_DIRECTORY,
     Document,
     DocumentAlreadyExistsError,
     read_documents,
     register_document,
+    delete_document as delete_document_record,
 )
 
 router = APIRouter()
 SOURCE_DIRECTORY = Path("source")
+DATA_SOURCE_DIRECTORY = DATA_DIRECTORY / "source"
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 DOCUMENT_UPLOAD_FILE = File(...)
 
@@ -65,6 +68,50 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
             temporary_path.unlink(missing_ok=True)
 
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.delete("/document", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: str,
+) -> Response:
+    document = next(
+        (item for item in read_documents() if item.id == document_id),
+        None,
+    )
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="document not found",
+        )
+
+    source_paths = []
+    for source_root in (SOURCE_DIRECTORY, DATA_SOURCE_DIRECTORY):
+        resolved_root = source_root.resolve()
+        source_path = (resolved_root / document.file_name).resolve()
+        try:
+            source_path.relative_to(resolved_root)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="document path escapes the source directory",
+            ) from error
+        if source_path.exists() and not source_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="document source is not a file",
+            )
+        source_paths.append(source_path)
+
+    deleted = delete_document_record(document.id)
+    if deleted is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="document not found",
+        )
+
+    for source_path in source_paths:
+        source_path.unlink(missing_ok=True)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/documents")

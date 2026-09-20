@@ -27,8 +27,10 @@ FAISS_FILENAME = "index.faiss"
 MANIFEST_FILENAME = "manifest.json"
 IMAGES_DIRECTORY = "images"
 
-PENDING_STATUS = "pending"
-COMPLETED_STATUS = "completed"
+WAITING_STATUS = "waiting"
+PROCESSING_STATUS = "processing"
+DONE_STATUS = "done"
+FAILED_STATUS = "failed"
 SCHEMA_VERSION = "1.0.0"
 IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 30
 
@@ -89,7 +91,9 @@ def initialize_database() -> Path:
                 file_sha256 TEXT NOT NULL,
                 file_name TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                status TEXT NOT NULL
+                status TEXT NOT NULL CHECK (
+                    status IN ('waiting', 'processing', 'done', 'failed')
+                )
             );
 
             CREATE TABLE IF NOT EXISTS chunks (
@@ -106,7 +110,6 @@ def initialize_database() -> Path:
             );
             """
         )
-
     return database_path
 
 
@@ -126,7 +129,7 @@ def register_document(file_name: str, file_digest: str) -> Document:
         file_sha256=file_digest,
         file_name=file_name,
         updated_at=_utc_now(),
-        status=PENDING_STATUS,
+        status=WAITING_STATUS,
     )
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
@@ -180,7 +183,106 @@ def read_documents() -> list[Document]:
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
 
 
-def read_pending_documents() -> list[Document]:
+def delete_document(document_id: str) -> Document | None:
+    database_path = initialize_database()
+    index_path = DATA_DIRECTORY / FAISS_FILENAME
+    manifest_path = DATA_DIRECTORY / MANIFEST_FILENAME
+    with sqlite3.connect(database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT id, file_sha256, file_name, updated_at, status
+            FROM documents
+            WHERE id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        document = _document_from_row(row, 0)
+        document_chunks = connection.execute(
+            """
+            SELECT vector_id, metadata_json
+            FROM chunks
+            WHERE document_id = ?
+            ORDER BY vector_id
+            """,
+            (document_id,),
+        ).fetchall()
+        remaining_resources = {
+            resource
+            for (metadata_json,) in connection.execute(
+                "SELECT metadata_json FROM chunks WHERE document_id != ?",
+                (document_id,),
+            )
+            if (resource := _resource_path(metadata_json)) is not None
+        }
+
+    vector_ids = [_vector_id(row[0]) for row in document_chunks]
+    deleted_resources = {
+        resource
+        for row in document_chunks
+        if (resource := _resource_path(row[1])) is not None
+        and resource not in remaining_resources
+    }
+
+    temporary_directory = Path(tempfile.mkdtemp(prefix=".delete-", dir=DATA_DIRECTORY))
+    temporary_database = temporary_directory / DATABASE_FILENAME
+    temporary_index = temporary_directory / FAISS_FILENAME
+    temporary_manifest = temporary_directory / MANIFEST_FILENAME
+    index_updated = bool(document_chunks)
+    manifest: dict[str, Any] | None = None
+
+    try:
+        if index_updated:
+            if not index_path.is_file() or not manifest_path.is_file():
+                raise ValueError(
+                    "cannot delete indexed document without FAISS index and manifest"
+                )
+            index, manifest = load_index()
+            removed = index.remove_ids(np.asarray(vector_ids, dtype=np.int64))
+            if removed != len(vector_ids):
+                raise ValueError(
+                    f"FAISS removed {removed} vectors; expected {len(vector_ids)}"
+                )
+            faiss.write_index(index, str(temporary_index))
+
+        _copy_database(database_path, temporary_database)
+        with sqlite3.connect(temporary_database) as connection:
+            connection.execute(
+                "DELETE FROM chunks WHERE document_id = ?",
+                (document_id,),
+            )
+            connection.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+
+        if index_updated:
+            if manifest is None:
+                raise RuntimeError("index manifest was not loaded")
+            document_count, chunk_count = _database_snapshot_counts(temporary_database)
+            manifest["document_count"] = document_count
+            manifest["chunk_count"] = chunk_count
+            manifest["index_sha256"] = file_sha256(temporary_index)
+            temporary_manifest.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+        if index_updated:
+            os.replace(temporary_index, index_path)
+        os.replace(temporary_database, database_path)
+        if index_updated:
+            os.replace(temporary_manifest, manifest_path)
+    finally:
+        shutil.rmtree(temporary_directory, ignore_errors=True)
+
+    for resource in deleted_resources:
+        resource.unlink(missing_ok=True)
+
+    return document
+
+
+def read_waiting_documents() -> list[Document]:
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
         connection.row_factory = sqlite3.Row
@@ -191,10 +293,77 @@ def read_pending_documents() -> list[Document]:
             WHERE status = ?
             ORDER BY updated_at, id
             """,
-            (PENDING_STATUS,),
+            (WAITING_STATUS,),
         ).fetchall()
 
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
+
+
+def mark_documents_processing(document_ids: Sequence[str]) -> list[Document]:
+    ids = list(dict.fromkeys(document_ids))
+    if not ids:
+        return []
+
+    database_path = initialize_database()
+    placeholders = ",".join("?" for _ in ids)
+    with sqlite3.connect(database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        documents_by_id = {
+            row["id"]: row
+            for row in connection.execute(
+                f"SELECT id, file_sha256, file_name, updated_at, status "
+                f"FROM documents WHERE id IN ({placeholders})",
+                ids,
+            )
+        }
+        missing_ids = [
+            document_id for document_id in ids if document_id not in documents_by_id
+        ]
+        if missing_ids:
+            raise ValueError(f"documents not found: {', '.join(missing_ids)}")
+        not_waiting = [
+            document_id
+            for document_id in ids
+            if documents_by_id[document_id]["status"] != WAITING_STATUS
+        ]
+        if not_waiting:
+            raise ValueError("documents are not waiting: " + ", ".join(not_waiting))
+        now = _utc_now()
+        connection.executemany(
+            "UPDATE documents SET status = ?, updated_at = ? WHERE id = ?",
+            ((PROCESSING_STATUS, now, document_id) for document_id in ids),
+        )
+        return [
+            Document(
+                id=document_id,
+                file_sha256=documents_by_id[document_id]["file_sha256"],
+                file_name=documents_by_id[document_id]["file_name"],
+                updated_at=now,
+                status=PROCESSING_STATUS,
+            )
+            for document_id in ids
+        ]
+
+
+def mark_documents_failed(document_ids: Sequence[str]) -> None:
+    ids = list(dict.fromkeys(document_ids))
+    if not ids:
+        return
+
+    database_path = initialize_database()
+    now = _utc_now()
+    with sqlite3.connect(database_path) as connection:
+        connection.executemany(
+            """
+            UPDATE documents
+            SET status = ?, updated_at = ?
+            WHERE id = ? AND status = ?
+            """,
+            (
+                (FAILED_STATUS, now, document_id, PROCESSING_STATUS)
+                for document_id in ids
+            ),
+        )
 
 
 def database_chunk_count() -> int:
@@ -279,7 +448,7 @@ def persist_chunks(
             temporary_database,
             rows,
             documents,
-            completed_at=created_at,
+            done_at=created_at,
         )
         (
             document_count,
@@ -488,17 +657,15 @@ def _write_database_snapshot(
     rows: Sequence[tuple[Any, ...]],
     documents: Sequence[Document],
     *,
-    completed_at: str,
+    done_at: str,
 ) -> None:
     _copy_database(source, destination)
 
     with sqlite3.connect(destination) as connection:
         statuses = dict(connection.execute("SELECT id, status FROM documents"))
         for document in documents:
-            if statuses.get(document.id) != PENDING_STATUS:
-                raise RuntimeError(
-                    f"document {document.id} is no longer in pending status"
-                )
+            if statuses.get(document.id) != PROCESSING_STATUS:
+                raise RuntimeError(f"document {document.id} is no longer processing")
             existing_chunk = connection.execute(
                 "SELECT 1 FROM chunks WHERE document_id = ? LIMIT 1",
                 (document.id,),
@@ -525,7 +692,7 @@ def _write_database_snapshot(
         )
         connection.executemany(
             "UPDATE documents SET status = ?, updated_at = ? WHERE id = ?",
-            ((COMPLETED_STATUS, completed_at, document.id) for document in documents),
+            ((DONE_STATUS, done_at, document.id) for document in documents),
         )
 
 
@@ -733,6 +900,38 @@ def _document_from_row(row: sqlite3.Row, index: int) -> Document:
     )
 
 
+def _resource_path(metadata_json: Any) -> Path | None:
+    if not isinstance(metadata_json, str):
+        return None
+    try:
+        metadata = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(metadata, Mapping):
+        return None
+
+    source = metadata.get("source")
+    if not isinstance(source, str) or not source.strip():
+        return None
+
+    data_root = DATA_DIRECTORY.resolve()
+    resource = (data_root / source).resolve()
+    try:
+        resource.relative_to(data_root)
+    except ValueError:
+        return None
+    return resource
+
+
+def _vector_id(value: Any) -> int:
+    if not isinstance(value, str) or not value.isdecimal():
+        raise ValueError(f"invalid chunks.vector_id: {value!r}")
+    vector_id = int(value)
+    if vector_id > np.iinfo(np.int64).max:
+        raise ValueError(f"chunks.vector_id is outside int64 range: {value}")
+    return vector_id
+
+
 def _required_uuid(
     chunk: Mapping[str, Any],
     keys: Sequence[str],
@@ -800,10 +999,17 @@ def _utc_now() -> str:
 
 
 __all__ = [
+    "DONE_STATUS",
     "Document",
     "DocumentAlreadyExistsError",
+    "FAILED_STATUS",
+    "PROCESSING_STATUS",
+    "WAITING_STATUS",
+    "delete_document",
+    "mark_documents_failed",
+    "mark_documents_processing",
     "persist_chunks",
     "read_documents",
-    "read_pending_documents",
+    "read_waiting_documents",
     "register_document",
 ]
