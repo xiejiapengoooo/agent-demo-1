@@ -72,6 +72,10 @@ class ImageAsset:
     content: bytes
 
 
+class DocumentAlreadyExistsError(ValueError):
+    """Raised when a document with the same name or content already exists."""
+
+
 def initialize_database() -> Path:
     data_directory = Path(DATA_DIRECTORY)
     data_directory.mkdir(parents=True, exist_ok=True)
@@ -116,15 +120,29 @@ def register_document(file_name: str, file_digest: str) -> Document:
     ):
         raise ValueError("file_digest must be a SHA-256 hexadecimal string")
 
+    file_digest = file_digest.lower()
     document = Document(
         id=str(uuid4()),
-        file_sha256=file_digest.lower(),
+        file_sha256=file_digest,
         file_name=file_name,
         updated_at=_utc_now(),
         status=PENDING_STATUS,
     )
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing_document = connection.execute(
+            """
+            SELECT 1
+            FROM documents
+            WHERE file_name = ? OR file_sha256 = ?
+            LIMIT 1
+            """,
+            (file_name, file_digest),
+        ).fetchone()
+        if existing_document is not None:
+            raise DocumentAlreadyExistsError(f"document already exists: {file_name}")
+
         connection.execute(
             """
             INSERT INTO documents (
@@ -325,7 +343,7 @@ def file_sha256(path: str | Path) -> str:
     with Path(path).open("rb") as file:
         for block in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(block)
-    return digest.hexdigest()
+    return digest.hexdigest().lower()
 
 
 def _prepare_chunks(
@@ -591,7 +609,7 @@ def _prepare_image(
     if not content:
         raise ValueError(f"image chunk at index {chunk_index} has an empty source")
 
-    image_sha256 = hashlib.sha256(content).hexdigest()
+    image_sha256 = hashlib.sha256(content).hexdigest().lower()
     extension = IMAGE_EXTENSIONS.get(mime_type) or mimetypes.guess_extension(mime_type)
     if extension is None:
         raise ValueError(
@@ -768,6 +786,7 @@ def _utc_now() -> str:
 
 __all__ = [
     "Document",
+    "DocumentAlreadyExistsError",
     "persist_chunks",
     "read_pending_documents",
     "register_document",

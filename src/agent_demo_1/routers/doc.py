@@ -1,8 +1,11 @@
+import hashlib
+import os
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
-from ..persisting import file_sha256, register_document
+from ..persisting import DocumentAlreadyExistsError, register_document
 
 router = APIRouter()
 SOURCE_DIRECTORY = Path("source")
@@ -23,18 +26,38 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
     destination_directory = SOURCE_DIRECTORY
     destination_directory.mkdir(parents=True, exist_ok=True)
     destination = destination_directory / filename
+    temporary_path: Path | None = None
 
     try:
-        with destination.open("wb") as output:
+        digest = hashlib.sha256()
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=".upload-",
+            suffix=".tmp",
+            dir=destination_directory,
+            delete=False,
+        ) as output:
+            temporary_path = Path(output.name)
             while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                digest.update(chunk)
                 output.write(chunk)
+
+        try:
+            register_document(
+                file_name=filename, file_digest=digest.hexdigest().lower()
+            )
+        except DocumentAlreadyExistsError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="document already exists",
+            ) from error
+
+        os.replace(temporary_path, destination)
+        temporary_path = None
     finally:
         await file.close()
-
-    register_document(
-        file_name=filename,
-        file_digest=file_sha256(destination),
-    )
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
