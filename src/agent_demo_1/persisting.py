@@ -505,51 +505,12 @@ def _database_vector_ids(path: Path) -> list[int]:
     return vector_ids
 
 
-def _faiss_vector_ids(index: Any) -> list[int]:
-    if not isinstance(index, faiss.IndexIDMap2):
-        raise TypeError("FAISS index must be IndexIDMap2")
-    return [int(value) for value in faiss.vector_to_array(index.id_map)]
-
-
-def _normalize_vector_ids(vector_ids: Sequence[int | str]) -> list[int]:
-    if isinstance(vector_ids, (str, bytes)):
-        raise TypeError("vector_ids must be a sequence of integers")
-
-    result = []
-    for value in vector_ids:
-        if isinstance(value, bool):
-            raise TypeError(f"invalid vector_id: {value!r}")
-        if isinstance(value, int):
-            vector_id = value
-        elif isinstance(value, str) and value.isdecimal():
-            vector_id = int(value)
-        else:
-            raise TypeError(f"invalid vector_id: {value!r}")
-        if vector_id < 0 or vector_id > np.iinfo(np.int64).max:
-            raise ValueError(f"vector_id is outside int64 range: {value!r}")
-        result.append(vector_id)
-
-    if len(result) != len(set(result)):
-        raise ValueError("vector_ids contain duplicates")
-    return result
-
-
 def _copy_database(source: Path, destination: Path) -> None:
     with (
         sqlite3.connect(source) as source_connection,
         sqlite3.connect(destination) as destination_connection,
     ):
         source_connection.backup(destination_connection)
-
-
-def _delete_database_vectors(path: Path, vector_ids: Sequence[int]) -> int:
-    placeholders = ", ".join("?" for _ in vector_ids)
-    with sqlite3.connect(path) as connection:
-        cursor = connection.execute(
-            f"DELETE FROM chunks WHERE vector_id IN ({placeholders})",
-            tuple(str(value) for value in vector_ids),
-        )
-        return cursor.rowcount
 
 
 def _prepare_image(
@@ -765,12 +726,7 @@ def _utc_now() -> str:
 
 
 __all__ = [
-    "COMPLETED_STATUS",
     "Document",
-    "PENDING_STATUS",
-    "delete_vectors",
-    "file_sha256",
-    "initialize_database",
     "persist_chunks",
     "read_pending_documents",
 ]
