@@ -11,6 +11,8 @@ from ..persisting import (
     DocumentAlreadyExistsError,
     read_documents,
     register_document,
+)
+from ..persisting import (
     delete_document as delete_document_record,
 )
 

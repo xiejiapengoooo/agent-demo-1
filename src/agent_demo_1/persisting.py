@@ -1000,11 +1000,11 @@ def _utc_now() -> str:
 
 __all__ = [
     "DONE_STATUS",
-    "Document",
-    "DocumentAlreadyExistsError",
     "FAILED_STATUS",
     "PROCESSING_STATUS",
     "WAITING_STATUS",
+    "Document",
+    "DocumentAlreadyExistsError",
     "delete_document",
     "mark_documents_failed",
     "mark_documents_processing",
