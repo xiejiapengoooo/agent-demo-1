@@ -165,6 +165,21 @@ def register_document(file_name: str, file_digest: str) -> Document:
     return document
 
 
+def read_documents() -> list[Document]:
+    database_path = initialize_database()
+    with sqlite3.connect(database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, file_sha256, file_name, updated_at, status
+            FROM documents
+            ORDER BY updated_at, id
+            """
+        ).fetchall()
+
+    return [_document_from_row(row, index) for index, row in enumerate(rows)]
+
+
 def read_pending_documents() -> list[Document]:
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
@@ -788,6 +803,7 @@ __all__ = [
     "Document",
     "DocumentAlreadyExistsError",
     "persist_chunks",
+    "read_documents",
     "read_pending_documents",
     "register_document",
 ]

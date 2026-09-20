@@ -5,7 +5,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
-from ..persisting import DocumentAlreadyExistsError, register_document
+from ..persisting import (
+    Document,
+    DocumentAlreadyExistsError,
+    read_documents,
+    register_document,
+)
 
 router = APIRouter()
 SOURCE_DIRECTORY = Path("source")
@@ -60,6 +65,11 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
             temporary_path.unlink(missing_ok=True)
 
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.get("/documents")
+async def list_documents() -> list[Document]:
+    return read_documents()
 
 
 __all__ = [
