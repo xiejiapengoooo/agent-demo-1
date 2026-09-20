@@ -29,7 +29,7 @@ IMAGES_DIRECTORY = "images"
 
 PENDING_STATUS = "pending"
 COMPLETED_STATUS = "completed"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = "1.0.0"
 IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 30
 
 CORE_FIELDS = frozenset(
@@ -100,9 +100,6 @@ def initialize_database() -> Path:
                 metadata_json TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
-
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_vector_id
-            ON chunks (vector_id);
             """
         )
 
@@ -180,7 +177,6 @@ def persist_chunks(
     )
     faiss_ids = np.asarray([int(row[1]) for row in rows], dtype=np.int64)
     created_at = _utc_now()
-    build_id = str(uuid4())
     temporary_directory = Path(tempfile.mkdtemp(prefix=".temp-", dir=DATA_DIRECTORY))
 
     try:
@@ -211,33 +207,23 @@ def persist_chunks(
             documents,
             completed_at=created_at,
         )
-        document_count, chunk_count, image_count, image_asset_count = (
-            _database_snapshot_counts(temporary_database)
-        )
+        (
+            document_count,
+            chunk_count,
+        ) = _database_snapshot_counts(temporary_database)
         if chunk_count != index.ntotal:
             raise ValueError("FAISS and SQLite chunk counts do not match")
         _write_images(temporary_images, image_assets)
 
         manifest = {
             "schema_version": SCHEMA_VERSION,
-            "build_id": build_id,
             "created_at": created_at,
             "embedding_model": embedding_model.strip(),
             "embedding_dimension": int(vectors.shape[1]),
-            "metric": "cosine",
-            "normalization": "l2",
-            "index_type": "IndexIDMap2(IndexFlatIP)",
             "document_count": document_count,
             "chunk_count": chunk_count,
-            "image_count": image_count,
-            "image_asset_count": image_asset_count,
             "next_vector_id": next_vector_id + len(rows),
             "index_sha256": index_sha256,
-            "files": {
-                "faiss": FAISS_FILENAME,
-                "sqlite": DATABASE_FILENAME,
-                "images": IMAGES_DIRECTORY,
-            },
         }
         temporary_manifest.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -537,31 +523,16 @@ def _write_database_snapshot(
         )
 
 
-def _database_snapshot_counts(path: Path) -> tuple[int, int, int, int]:
+def _database_snapshot_counts(path: Path) -> tuple[int, int]:
     with sqlite3.connect(path) as connection:
         document_count = connection.execute(
             "SELECT COUNT(DISTINCT document_id) FROM chunks"
         ).fetchone()[0]
         chunk_count = connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-        image_rows = connection.execute(
-            "SELECT metadata_json FROM chunks WHERE chunk_type = 'image'"
-        ).fetchall()
-
-    image_sources = set()
-    for (metadata_json,) in image_rows:
-        try:
-            metadata = json.loads(metadata_json)
-        except (TypeError, json.JSONDecodeError) as error:
-            raise ValueError("image chunk has invalid metadata_json") from error
-        source = metadata.get("source")
-        if isinstance(source, str):
-            image_sources.add(source)
 
     return (
         int(document_count),
         int(chunk_count),
-        len(image_rows),
-        len(image_sources),
     )
 
 
@@ -632,9 +603,11 @@ def _normalize_vector_ids(vector_ids: Sequence[int | str]) -> list[int]:
 
 
 def _copy_database(source: Path, destination: Path) -> None:
-    with sqlite3.connect(source) as source_connection:
-        with sqlite3.connect(destination) as destination_connection:
-            source_connection.backup(destination_connection)
+    with (
+        sqlite3.connect(source) as source_connection,
+        sqlite3.connect(destination) as destination_connection,
+    ):
+        source_connection.backup(destination_connection)
 
 
 def _delete_database_vectors(path: Path, vector_ids: Sequence[int]) -> int:
