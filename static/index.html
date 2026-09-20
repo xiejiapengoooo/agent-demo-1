@@ -65,7 +65,9 @@
                   <h2 id="documents-title">文档列表 <span class="badge badge-sm list-count" id="document-count">0</span></h2>
                   <p>按添加时间展示当前工作区的文档</p>
                 </div>
+                <button class="btn btn-primary btn-sm shrink-0" id="start-documents-button" type="button" title="开始处理全部等待中的文档" disabled>开始处理</button>
               </div>
+              <p class="upload-status" id="processing-status" role="status" aria-live="polite" hidden></p>
             </div>
             <div id="documents-region" aria-live="polite">
               <div class="list-loading">正在读取文档列表……</div>
@@ -86,6 +88,8 @@
       const removeFileButton = document.getElementById("remove-file-button");
       const submitButton = form.querySelector("button[type=submit]");
       const uploadStatus = document.getElementById("upload-status");
+      const startDocumentsButton = document.getElementById("start-documents-button");
+      const processingStatus = document.getElementById("processing-status");
       const documentsRegion = document.getElementById("documents-region");
       const documentCount = document.getElementById("document-count");
       const connectionDot = document.getElementById("connection-dot");
@@ -94,6 +98,8 @@
       const completedMetric = document.getElementById("completed-metric");
       const statusLabels = { waiting: "等待处理", processing: "处理中", done: "已完成", failed: "处理失败" };
       let refreshTimer;
+      let waitingDocumentCount = 0;
+      let startingDocuments = false;
 
       function formatBytes(bytes) {
         if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes || 0} B`;
@@ -116,6 +122,17 @@
       function setUploadStatus(message, kind = "") {
         uploadStatus.textContent = message;
         uploadStatus.className = `upload-status${kind ? ` is-${kind}` : ""}`;
+      }
+
+      function updateStartButton() {
+        startDocumentsButton.disabled = startingDocuments || waitingDocumentCount === 0;
+        startDocumentsButton.textContent = startingDocuments ? "正在启动……" : "开始处理";
+      }
+
+      function setProcessingStatus(message, kind = "") {
+        processingStatus.hidden = false;
+        processingStatus.textContent = message;
+        processingStatus.className = `upload-status${kind ? ` is-${kind}` : ""}`;
       }
 
       function showSelectedFile(file) {
@@ -141,6 +158,8 @@
       }
 
       function renderDocuments(documents) {
+        waitingDocumentCount = documents.filter((document) => document.status === "waiting").length;
+        updateStartButton();
         documentCount.textContent = documents.length;
         pendingMetric.textContent = documents.filter((document) => ["waiting", "processing"].includes(document.status)).length;
         completedMetric.textContent = documents.filter((document) => document.status === "done").length;
@@ -203,12 +222,32 @@
             refreshTimer = undefined;
           }
         } catch (error) {
+          waitingDocumentCount = 0;
+          updateStartButton();
           connectionDot.className = "connection-dot is-offline";
           serviceMetric.textContent = "连接失败";
           documentCount.textContent = "!";
           pendingMetric.textContent = "—";
           completedMetric.textContent = "—";
           documentsRegion.innerHTML = `<div class="list-error">${escapeHtml(error.message || "文档列表读取失败")}</div>`;
+        }
+      }
+
+      async function startDocumentProcessing() {
+        if (startingDocuments || waitingDocumentCount === 0) return;
+        startingDocuments = true;
+        updateStartButton();
+        setProcessingStatus("正在启动待处理文档……");
+        try {
+          const response = await fetch("/documents/start", { method: "POST" });
+          if (!response.ok) throw new Error(await readError(response, "启动处理失败"));
+          setProcessingStatus("已提交处理请求，文档状态将自动更新。", "success");
+          await loadDocuments();
+        } catch (error) {
+          setProcessingStatus(error.message || "启动处理失败", "error");
+        } finally {
+          startingDocuments = false;
+          updateStartButton();
         }
       }
 
@@ -244,6 +283,7 @@
         uploadDocument(file);
       });
 
+      startDocumentsButton.addEventListener("click", startDocumentProcessing);
       fileInput.addEventListener("change", () => showSelectedFile(fileInput.files[0]));
       removeFileButton.addEventListener("click", () => {
         fileInput.value = "";

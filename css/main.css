@@ -267,6 +267,7 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 34px); line-height: 1.25; }
 .list-panel { min-width: 0; overflow: hidden; }
 .list-header { padding: 18px 20px; border-bottom: 1px solid var(--line); }
 .list-header .panel-heading { margin-bottom: 0; align-items: center; }
+.list-header .upload-status { margin-top: 8px; }
 .list-count {
   display: inline-flex;
   border: 0;
