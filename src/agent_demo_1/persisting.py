@@ -106,6 +106,47 @@ def initialize_database() -> Path:
     return database_path
 
 
+def register_document(file_name: str, file_digest: str) -> Document:
+    if not isinstance(file_name, str) or not file_name.strip():
+        raise ValueError("file_name must be a non-empty string")
+    if (
+        not isinstance(file_digest, str)
+        or len(file_digest) != 64
+        or any(character not in "0123456789abcdefABCDEF" for character in file_digest)
+    ):
+        raise ValueError("file_digest must be a SHA-256 hexadecimal string")
+
+    document = Document(
+        id=str(uuid4()),
+        file_sha256=file_digest.lower(),
+        file_name=file_name,
+        updated_at=_utc_now(),
+        status=PENDING_STATUS,
+    )
+    database_path = initialize_database()
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO documents (
+                id,
+                file_sha256,
+                file_name,
+                updated_at,
+                status
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                document.id,
+                document.file_sha256,
+                document.file_name,
+                document.updated_at,
+                document.status,
+            ),
+        )
+
+    return document
+
+
 def read_pending_documents() -> list[Document]:
     database_path = initialize_database()
     with sqlite3.connect(database_path) as connection:
@@ -729,4 +770,5 @@ __all__ = [
     "Document",
     "persist_chunks",
     "read_pending_documents",
+    "register_document",
 ]

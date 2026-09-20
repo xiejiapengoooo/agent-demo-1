@@ -2,6 +2,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
+from ..persisting import file_sha256, register_document
+
 router = APIRouter()
 SOURCE_DIRECTORY = Path("source")
 UPLOAD_CHUNK_SIZE = 1024 * 1024
@@ -28,6 +30,11 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
                 output.write(chunk)
     finally:
         await file.close()
+
+    register_document(
+        file_name=filename,
+        file_digest=file_sha256(destination),
+    )
 
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
