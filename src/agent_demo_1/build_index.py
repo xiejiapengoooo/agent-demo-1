@@ -29,7 +29,7 @@ def build_index(document_ids: Sequence[str]):
         for document in documents:
             file = _document_path(document)
             result = parser_registry.parse(file)
-            blocks = normalize_blocks(result.output)
+            blocks = normalize_blocks(result["output"])
             chunks = chunk_blocks(blocks, document_id=document.id)
             if not chunks:
                 raise ValueError(f"document {document.id} produced no chunks")
