@@ -19,8 +19,11 @@ SOURCE_DIRECTORY = Path("source")
 DATA_SOURCE_DIRECTORY = DATA_DIRECTORY / "source"
 
 
-def build_index(document_ids: Sequence[str]):
-    documents = mark_documents_processing(document_ids)
+def build_index(document_ids: Sequence[str]) -> None:
+    process_documents(mark_documents_processing(document_ids))
+
+
+def process_documents(documents: Sequence[Document]) -> None:
     try:
         parser_registry = ParserRegistry()
         parser_registry.register(DocxParser)
@@ -46,7 +49,7 @@ def build_index(document_ids: Sequence[str]):
             _restore_documents(moved_files)
             raise
     except Exception:
-        mark_documents_failed(document_ids)
+        mark_documents_failed([document.id for document in documents])
         raise
 
 
@@ -64,7 +67,7 @@ def _document_path(document: Document) -> Path:
     return file
 
 
-def _archive_documents(documents: list[Document]) -> list[tuple[Path, Path]]:
+def _archive_documents(documents: Sequence[Document]) -> list[tuple[Path, Path]]:
     DATA_SOURCE_DIRECTORY.mkdir(parents=True, exist_ok=True)
     source_root = SOURCE_DIRECTORY.resolve()
     archived_root = DATA_SOURCE_DIRECTORY.resolve()
@@ -99,4 +102,4 @@ def _restore_documents(moved_files: list[tuple[Path, Path]]) -> None:
             os.replace(destination, source)
 
 
-__all__ = ["build_index"]
+__all__ = ["build_index", "process_documents"]
