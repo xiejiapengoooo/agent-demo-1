@@ -35,6 +35,7 @@ IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 30
 CORE_FIELDS = frozenset(
     {
         "id",
+        "vector_id",
         "chunk_id",
         "document_id",
         "order",
@@ -43,7 +44,6 @@ CORE_FIELDS = frozenset(
         "page_start",
         "page_end",
         "vector",
-        "vector_id",
     }
 )
 IMAGE_EXTENSIONS = {
@@ -67,7 +67,7 @@ class Document:
 
 
 @dataclass(frozen=True, slots=True)
-class _ImageAsset:
+class ImageAsset:
     relative_path: str
     content: bytes
 
@@ -374,7 +374,7 @@ def _prepare_chunks(
     documents: Sequence[Document],
     *,
     vector_id_start: int = 0,
-) -> tuple[list[tuple[Any, ...]], np.ndarray, list[_ImageAsset]]:
+) -> tuple[list[tuple[Any, ...]], np.ndarray, list[ImageAsset]]:
     if not chunks:
         raise ValueError("at least one chunk is required")
 
@@ -384,7 +384,7 @@ def _prepare_chunks(
 
     rows: list[tuple[Any, ...]] = []
     vectors: list[list[float]] = []
-    image_assets: dict[str, _ImageAsset] = {}
+    image_assets: dict[str, ImageAsset] = {}
     seen_chunk_ids: set[str] = set()
     seen_orders: set[tuple[str, int]] = set()
     chunk_document_ids: set[str] = set()
@@ -395,7 +395,7 @@ def _prepare_chunks(
         if not isinstance(chunk, Mapping):
             raise TypeError(f"chunk at index {index} must be a mapping")
 
-        chunk_id = _required_uuid(chunk, ("chunk_id", "id"), index)
+        chunk_id = str(uuid4())
         if chunk_id in seen_chunk_ids:
             raise ValueError(f"duplicate chunk id: {chunk_id}")
         seen_chunk_ids.add(chunk_id)
@@ -650,7 +650,7 @@ def _delete_database_vectors(path: Path, vector_ids: Sequence[int]) -> int:
 def _prepare_image(
     source: Any,
     chunk_index: int,
-) -> tuple[_ImageAsset, str, str]:
+) -> tuple[ImageAsset, str, str]:
     if not isinstance(source, str) or not source.strip():
         raise ValueError(f"image chunk at index {chunk_index} has no source")
 
@@ -696,7 +696,7 @@ def _prepare_image(
 
     filename = f"{image_sha256[:16]}{extension}"
     relative_path = (Path(IMAGES_DIRECTORY) / filename).as_posix()
-    return _ImageAsset(relative_path, content), mime_type, image_sha256
+    return ImageAsset(relative_path, content), mime_type, image_sha256
 
 
 def _decode_image_data_uri(value: str, chunk_index: int) -> tuple[str, bytes]:
@@ -761,7 +761,7 @@ def _download_image(url: str, chunk_index: int) -> tuple[str, bytes]:
         return mime_type, content
 
 
-def _write_images(directory: Path, image_assets: Sequence[_ImageAsset]) -> None:
+def _write_images(directory: Path, image_assets: Sequence[ImageAsset]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for image in image_assets:
         (directory / Path(image.relative_path).name).write_bytes(image.content)
