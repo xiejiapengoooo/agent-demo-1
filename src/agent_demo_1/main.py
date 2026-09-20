@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .routers import doc_router
@@ -22,6 +25,10 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(doc_router)
+    app.mount(
+        "/",
+        StaticFiles(directory=Path("static"), html=True),
+    )
 
     return app
 

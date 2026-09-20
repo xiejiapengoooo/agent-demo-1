@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>文档上传</title>
+  </head>
+  <body>
+    <main>
+      <h1>上传文档</h1>
+      <form id="document-upload-form" enctype="multipart/form-data">
+        <label for="document-file">选择文档：</label>
+        <input id="document-file" name="file" type="file" required>
+        <button type="submit">上传</button>
+      </form>
+      <p id="upload-status" role="status" aria-live="polite"></p>
+    </main>
+
+    <script>
+      const form = document.getElementById("document-upload-form");
+      const fileInput = document.getElementById("document-file");
+      const submitButton = form.querySelector("button[type=submit]");
+      const status = document.getElementById("upload-status");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const file = fileInput.files[0];
+        if (!file) {
+          status.textContent = "请选择要上传的文档。";
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        submitButton.disabled = true;
+        status.textContent = "正在上传……";
+
+        try {
+          const response = await fetch("/document", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            let detail = "上传失败。";
+            try {
+              const error = await response.json();
+              detail = error.detail || detail;
+            } catch {
+              detail = `上传失败（${response.status}）。`;
+            }
+            throw new Error(detail);
+          }
+
+          status.textContent = `上传成功：${file.name}`;
+          form.reset();
+        } catch (error) {
+          status.textContent = error.message || "上传失败。";
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
