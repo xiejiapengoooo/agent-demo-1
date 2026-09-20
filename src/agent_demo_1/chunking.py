@@ -1,7 +1,6 @@
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
-from uuid import uuid4
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
