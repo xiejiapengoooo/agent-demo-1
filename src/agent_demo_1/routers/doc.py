@@ -2,14 +2,27 @@ import hashlib
 import os
 import tempfile
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 
+from ..build_index import build_index
 from ..persisting import (
     DATA_DIRECTORY,
+    WAITING_STATUS,
     Document,
     DocumentAlreadyExistsError,
     read_documents,
+    read_waiting_documents,
     register_document,
 )
 from ..persisting import (
@@ -121,9 +134,41 @@ async def list_documents() -> list[Document]:
     return read_documents()
 
 
-@router.post("/documents/start")
-async def start_document_processing() -> None:
-    pass
+@router.post("/documents/start", status_code=status.HTTP_202_ACCEPTED)
+async def start_document_processing(
+    background_tasks: BackgroundTasks,
+    document_ids: Annotated[list[str] | None, Body(embed=True, min_length=1)] = None,
+) -> Response:
+    documents = read_waiting_documents() if document_ids is None else read_documents()
+    ids = (
+        [document.id for document in documents]
+        if document_ids is None
+        else list(dict.fromkeys(document_ids))
+    )
+    documents_by_id = {document.id: document for document in documents}
+    missing_ids = [
+        document_id for document_id in ids if document_id not in documents_by_id
+    ]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"documents not found: {', '.join(missing_ids)}",
+        )
+
+    not_waiting = [
+        document_id
+        for document_id in ids
+        if documents_by_id[document_id].status != WAITING_STATUS
+    ]
+    if not_waiting:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"documents are not waiting: {', '.join(not_waiting)}",
+        )
+
+    if ids:
+        background_tasks.add_task(build_index, ids)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
 __all__ = [
