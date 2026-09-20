@@ -14,3 +14,6 @@ wheels/
 source
 data
 mock*.*
+
+# Frontend dependencies
+node_modules/

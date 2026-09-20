@@ -121,6 +121,11 @@ async def list_documents() -> list[Document]:
     return read_documents()
 
 
+@router.post("/documents/start")
+async def start_document_processing() -> None:
+    pass
+
+
 __all__ = [
     "router",
 ]
