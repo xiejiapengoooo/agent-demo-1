@@ -2,9 +2,10 @@ from collections.abc import Sequence
 from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
+from .base import BaseAgent
 from .common import Evidence, format_evidence
 
 REVIEWER_PROMPT = """你是答案审核员，只负责审核草稿，不要重写答案。
@@ -28,9 +29,13 @@ class ReviewDecision(BaseModel):
     missing_query: str | None = None
 
 
-class ReviewerAgent:
+class ReviewerAgent(BaseAgent):
+    name = "reviewer"
+    system_prompt = REVIEWER_PROMPT
+
     def __init__(self, model: BaseChatModel) -> None:
-        self._reviewer = model.with_structured_output(
+        super().__init__(model)
+        self._reviewer = self.model.with_structured_output(
             ReviewDecision,
             method="function_calling",
         )
@@ -48,10 +53,7 @@ class ReviewerAgent:
             f"可用证据：\n{format_evidence(evidence)}"
         )
         raw_decision = self._reviewer.invoke(
-            [
-                SystemMessage(content=REVIEWER_PROMPT),
-                HumanMessage(content=prompt),
-            ]
+            self._with_system_prompt([HumanMessage(content=prompt)])
         )
         return ReviewDecision.model_validate(raw_decision)
 

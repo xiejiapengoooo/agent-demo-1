@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
@@ -12,11 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class Source(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    citation_id: str
     chunk_id: str
     file_name: str
-    page_start: int | None = None
-    page_end: int | None = None
     score: float = Field(ge=-1, le=1)
 
 
@@ -69,11 +65,8 @@ def normalize_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[Evidence]:
 
         evidence.append(
             Evidence(
-                citation_id=_citation_id(chunk_id),
                 chunk_id=chunk_id,
-                file_name=" ".join(file_name.split()),
-                page_start=_display_page(chunk.get("page_start")),
-                page_end=_display_page(chunk.get("page_end")),
+                file_name=file_name,
                 score=float(score),
                 text=text.strip(),
             )
@@ -90,9 +83,7 @@ def format_evidence(evidence: Sequence[Evidence]) -> str:
         sections.append(
             "\n".join(
                 (
-                    f"引用：[{item.citation_id}]",
                     f"文件：{item.file_name}",
-                    f"页码：{_page_label(item)}",
                     f"相关度：{item.score:.4f}",
                     "<document>",
                     item.text,
@@ -141,29 +132,6 @@ def extract_evidence(messages: Sequence[BaseMessage]) -> list[Evidence]:
         for item in artifact:
             evidence.append(Evidence.model_validate(item))
     return merge_evidence([], evidence)
-
-
-def _display_page(value: Any) -> int | None:
-    if value is None:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise TypeError(f"invalid page index: {value!r}")
-    return value + 1
-
-
-def _citation_id(chunk_id: str) -> str:
-    token = re.sub(r"[^0-9A-Za-z]", "", chunk_id)[:8]
-    if not token:
-        raise ValueError("chunk id cannot produce a citation id")
-    return f"S-{token.lower()}"
-
-
-def _page_label(item: Evidence) -> str:
-    if item.page_start is None:
-        return "未知"
-    if item.page_end is None or item.page_end == item.page_start:
-        return str(item.page_start)
-    return f"{item.page_start}-{item.page_end}"
 
 
 __all__ = [

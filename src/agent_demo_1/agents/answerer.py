@@ -2,8 +2,9 @@ from collections.abc import Sequence
 from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 
+from .base import BaseAgent
 from .common import Evidence, format_evidence, message_text
 
 ANSWERER_PROMPT = """你是答案撰写员。请直接、清晰地回答用户问题。
@@ -17,9 +18,12 @@ ANSWERER_PROMPT = """你是答案撰写员。请直接、清晰地回答用户�
 当处理 direct 路径时，可以正常交流，但不要假装查询过知识库。"""
 
 
-class AnswererAgent:
+class AnswererAgent(BaseAgent):
+    name = "answerer"
+    system_prompt = ANSWERER_PROMPT
+
     def __init__(self, model: BaseChatModel) -> None:
-        self._model = model
+        super().__init__(model)
 
     def invoke(
         self,
@@ -29,10 +33,7 @@ class AnswererAgent:
         evidence: Sequence[Evidence] = (),
         review_feedback: str | None = None,
     ) -> str:
-        model_messages: list[BaseMessage] = [
-            SystemMessage(content=ANSWERER_PROMPT),
-            *messages,
-        ]
+        model_messages = self._with_system_prompt(messages)
         if route == "research":
             model_messages.append(
                 HumanMessage(
@@ -47,7 +48,7 @@ class AnswererAgent:
                 HumanMessage(content=f"请根据审核意见修改答案：{review_feedback}")
             )
 
-        answer = message_text(self._model.invoke(model_messages))
+        answer = message_text(self.model.invoke(model_messages))
         if not answer:
             raise RuntimeError("answerer returned an empty response")
         return answer

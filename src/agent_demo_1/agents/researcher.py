@@ -4,13 +4,14 @@ from collections.abc import Sequence
 from typing import Annotated, Any, TypedDict
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool
 from langgraph.graph import END, START, StateGraph, add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field
 
 from ..retrieval import retrieve_chunks
+from .base import BaseAgent
 from .common import (
     Evidence,
     extract_evidence,
@@ -18,8 +19,6 @@ from .common import (
     normalize_chunks,
 )
 
-MAX_SEARCH_RESULTS = 8
-DEFAULT_SEARCH_RESULTS = 5
 RESEARCH_RECURSION_LIMIT = 8
 
 RESEARCHER_PROMPT = """你是检索研究员，只负责为回答问题收集证据。
@@ -35,28 +34,26 @@ class SearchDocumentsInput(BaseModel):
         min_length=1,
         description="独立、明确的知识库检索问题",
     )
-    top_k: int = Field(
-        default=DEFAULT_SEARCH_RESULTS,
-        ge=1,
-        le=MAX_SEARCH_RESULTS,
-        description="需要返回的最相关文档片段数量",
-    )
 
 
 class ResearchState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
 
-class ResearcherAgent:
+class ResearcherAgent(BaseAgent):
+    name = "researcher"
+    system_prompt = RESEARCHER_PROMPT
+
     def __init__(self, model: BaseChatModel) -> None:
+        super().__init__(model)
         self._search_tool = self._make_search_tool()
-        self._model = model.bind_tools(
+        self._tool_model = self.model.bind_tools(
             [self._search_tool],
             tool_choice="auto",
         )
         self._graph = self._build_graph()
 
-    def research(
+    def invoke(
         self,
         goal: str,
         existing_evidence: Sequence[Evidence] = (),
@@ -72,6 +69,13 @@ class ResearcherAgent:
         )
         return extract_evidence(result["messages"])
 
+    def research(
+        self,
+        goal: str,
+        existing_evidence: Sequence[Evidence] = (),
+    ) -> list[Evidence]:
+        return self.invoke(goal, existing_evidence)
+
     def _build_graph(self) -> Any:
         builder = StateGraph(ResearchState)
         builder.add_node("research_agent", self._call_model)
@@ -86,9 +90,7 @@ class ResearcherAgent:
         return builder.compile()
 
     def _call_model(self, state: ResearchState) -> dict[str, Any]:
-        response = self._model.invoke(
-            [SystemMessage(content=RESEARCHER_PROMPT), *state["messages"]]
-        )
+        response = self._tool_model.invoke(self._with_system_prompt(state["messages"]))
         return {"messages": [response]}
 
     @staticmethod
@@ -100,10 +102,9 @@ class ResearcherAgent:
         )
         def search_documents(
             query: str,
-            top_k: int = DEFAULT_SEARCH_RESULTS,
         ) -> tuple[str, list[dict[str, Any]]]:
             """检索项目知识库，返回与问题最相关的文档证据。"""
-            evidence = normalize_chunks(retrieve_chunks(query.strip(), top_k=top_k))
+            evidence = normalize_chunks(retrieve_chunks(query.strip()))
             artifact = [item.model_dump(mode="json") for item in evidence]
             return format_evidence(evidence), artifact
 

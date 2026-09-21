@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, TypedDict, cast
+from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -23,12 +23,12 @@ from .agents.common import last_user_text, merge_evidence
 from .config import Settings, get_settings
 
 
-class AgentState(TypedDict, total=False):
+class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
-    route: Literal["direct", "research"]
-    research_goal: str
+    route: NotRequired[Literal["direct", "research"]]
+    research_goal: NotRequired[str]
     evidence: Annotated[list[Evidence], merge_evidence]
-    draft: str
+    draft: NotRequired[str]
     review: ReviewDecision | None
     research_rounds: int
     revision_rounds: int
@@ -129,7 +129,7 @@ class DocumentMultiAgent:
         if review is not None and review.verdict == "more_research":
             goal = (review.missing_query or review.feedback or goal).strip()
 
-        evidence = self._researcher.research(
+        evidence = self._researcher.invoke(
             goal,
             existing_evidence=state.get("evidence", []),
         )
@@ -149,7 +149,7 @@ class DocumentMultiAgent:
 
         answer = self._answerer.invoke(
             state["messages"],
-            route=state["route"],
+            route=self._route_after_supervisor(state),
             evidence=state.get("evidence", []),
             review_feedback=review_feedback,
         )
@@ -160,9 +160,12 @@ class DocumentMultiAgent:
         }
 
     def _reviewer_node(self, state: AgentState) -> dict[str, Any]:
+        draft = state.get("draft")
+        if draft is None:
+            raise RuntimeError("answerer did not provide a draft")
         decision = self._reviewer.invoke(
             question=last_user_text(state["messages"]),
-            draft=state["draft"],
+            draft=draft,
             evidence=state.get("evidence", []),
         )
         return {"review": decision}
@@ -171,11 +174,15 @@ class DocumentMultiAgent:
     def _route_after_supervisor(
         state: AgentState,
     ) -> Literal["direct", "research"]:
-        return state["route"]
+        route = state.get("route")
+        if route is None:
+            raise RuntimeError("supervisor did not provide a route")
+        return route
 
     @staticmethod
     def _route_after_answer(state: AgentState) -> Literal["review", "end"]:
-        return "end" if state["route"] == "direct" else "review"
+        route = DocumentMultiAgent._route_after_supervisor(state)
+        return "end" if route == "direct" else "review"
 
     def _route_after_review(
         self,
