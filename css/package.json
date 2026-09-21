@@ -1,7 +1,9 @@
 {
   "scripts": {
-    "build": "tailwindcss -i ./main.css -o ../static/main.css --minify",
-    "build:watch": "tailwindcss -i ./main.css -o ../static/main.css --watch"
+    "build:doc": "tailwindcss -i ./doc.css -o ../static/doc.css --minify",
+    "build:index": "tailwindcss -i ./index.css -o ../static/index.css --minify",
+    "build:doc:watch": "tailwindcss -i ./doc.css -o ../static/doc.css --watch",
+    "build:index:watch": "tailwindcss -i ./index.css -o ../static/index.css --watch"
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.3.3",

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="olive-sage">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f5ef">
+  <title>文档库 · agent-demo-1</title>
+  <link href="./doc.css" rel="stylesheet" type="text/css">
+</head>
+
+<body class="text-base-content">
+  <main class="page">
+    <div class="workspace">
+      <section class="card panel upload-panel" aria-labelledby="upload-title">
+        <div class="panel-heading">
+          <div>
+            <h2 id="upload-title">上传文档</h2>
+            <p>单次上传一个文件</p>
+          </div>
+        </div>
+        <form id="document-upload-form" enctype="multipart/form-data">
+          <label class="drop-zone" id="drop-zone" for="document-file">
+            <input id="document-file" name="file" type="file" required>
+            <span>
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <span class="drop-title">将文档拖到这里</span>
+              <span class="drop-hint">或点击浏览本地文件</span>
+            </span>
+          </label>
+          <div class="selected-file" id="selected-file" aria-live="polite">
+            <span class="selected-file-icon" id="selected-file-icon" aria-hidden="true">DOC</span>
+            <div class="min-w-0">
+              <div class="selected-file-name" id="selected-file-name"></div>
+              <div class="selected-file-meta" id="selected-file-meta"></div>
+            </div>
+            <button class="btn btn-ghost btn-sm btn-square remove-file-button" id="remove-file-button" type="button"
+              aria-label="移除已选文件" title="移除已选文件">×</button>
+          </div>
+          <div class="upload-actions">
+            <button class="btn btn-primary btn-block primary-button" type="submit">上传文档</button>
+            <p class="upload-status" id="upload-status" role="status" aria-live="polite">等待选择文件</p>
+          </div>
+        </form>
+        <p class="footer-note"><span aria-hidden="true">ⓘ</span><span>同名文件或内容完全相同的文件不会重复添加。</span></p>
+      </section>
+
+      <section class="grid min-w-0 gap-4" aria-label="文档概览与列表">
+        <div class="metric-grid" aria-label="文档概览">
+          <div class="metric-card">
+            <div class="metric-label"><span class="connection-dot" id="connection-dot" aria-hidden="true"></span>服务状态
+            </div>
+            <div class="metric-value" id="service-metric">连接中</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">待处理文档</div>
+            <div class="metric-value" id="pending-metric">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">已完成文档</div>
+            <div class="metric-value" id="completed-metric">—</div>
+          </div>
+        </div>
+
+        <section class="card panel list-panel" aria-labelledby="documents-title">
+          <div class="list-header">
+            <div class="panel-heading">
+              <div>
+                <h2 id="documents-title">文档列表 <span class="badge badge-sm list-count" id="document-count">0</span></h2>
+                <p>按添加时间展示当前工作区的文档</p>
+              </div>
+              <button class="btn btn-primary btn-sm shrink-0" id="start-documents-button" type="button"
+                title="开始处理全部等待中的文档" disabled>开始处理</button>
+            </div>
+            <p class="upload-status" id="processing-status" role="status" aria-live="polite" hidden></p>
+          </div>
+          <div id="documents-region" aria-live="polite">
+            <div class="list-loading">正在读取文档列表……</div>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById("document-upload-form");
+    const fileInput = document.getElementById("document-file");
+    const dropZone = document.getElementById("drop-zone");
+    const selectedFile = document.getElementById("selected-file");
+    const selectedFileName = document.getElementById("selected-file-name");
+    const selectedFileMeta = document.getElementById("selected-file-meta");
+    const selectedFileIcon = document.getElementById("selected-file-icon");
+    const removeFileButton = document.getElementById("remove-file-button");
+    const submitButton = form.querySelector("button[type=submit]");
+    const uploadStatus = document.getElementById("upload-status");
+    const startDocumentsButton = document.getElementById("start-documents-button");
+    const processingStatus = document.getElementById("processing-status");
+    const documentsRegion = document.getElementById("documents-region");
+    const documentCount = document.getElementById("document-count");
+    const connectionDot = document.getElementById("connection-dot");
+    const serviceMetric = document.getElementById("service-metric");
+    const pendingMetric = document.getElementById("pending-metric");
+    const completedMetric = document.getElementById("completed-metric");
+    const statusLabels = {waiting: "等待处理", processing: "处理中", done: "已完成", failed: "处理失败"};
+    let refreshTimer;
+    let waitingDocumentCount = 0;
+    let startingDocuments = false;
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes || 0} B`;
+      const units = ["KB", "MB", "GB"];
+      let value = bytes;
+      let unitIndex = -1;
+      do {value /= 1024; unitIndex += 1;} while (value >= 1024 && unitIndex < units.length - 1);
+      return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    function formatDate(value) {
+      if (!value) return "时间未知";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      }).format(date);
+    }
+
+    function setUploadStatus(message, kind = "") {
+      uploadStatus.textContent = message;
+      uploadStatus.className = `upload-status${kind ? ` is-${kind}` : ""}`;
+    }
+
+    function updateStartButton() {
+      startDocumentsButton.disabled = startingDocuments || waitingDocumentCount === 0;
+      startDocumentsButton.textContent = startingDocuments ? "正在启动……" : "开始处理";
+    }
+
+    function setProcessingStatus(message, kind = "") {
+      processingStatus.hidden = false;
+      processingStatus.textContent = message;
+      processingStatus.className = `upload-status${kind ? ` is-${kind}` : ""}`;
+    }
+
+    function showSelectedFile(file) {
+      if (!file) {
+        selectedFile.classList.remove("is-visible");
+        selectedFileName.textContent = "";
+        selectedFileMeta.textContent = "";
+        selectedFileIcon.textContent = "DOC";
+        return;
+      }
+      const extension = (file.name.split(".").pop() || "doc").slice(0, 4).toUpperCase();
+      selectedFileName.textContent = file.name;
+      selectedFileMeta.textContent = `${extension} · ${formatBytes(file.size)}`;
+      selectedFileIcon.textContent = extension;
+      selectedFile.classList.add("is-visible");
+      setUploadStatus("文件已准备好，可以上传。", "success");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>'"]/g, (character) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+      }[character]));
+    }
+
+    function renderDocuments(documents) {
+      waitingDocumentCount = documents.filter((document) => document.status === "waiting").length;
+      updateStartButton();
+      documentCount.textContent = documents.length;
+      pendingMetric.textContent = documents.filter((document) => ["waiting", "processing"].includes(document.status)).length;
+      completedMetric.textContent = documents.filter((document) => document.status === "done").length;
+      if (!documents.length) {
+        documentsRegion.innerHTML = `<div class="empty-state">
+            <div>
+              <span class="empty-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2ZM14 2v6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <strong>还没有文档</strong>
+              <span>上传第一个文件，开始建立你的文档库。</span>
+            </div>
+          </div>`;
+        return;
+      }
+      documentsRegion.innerHTML = `<ul class="m-0 list-none p-0">${documents.map((document) => {
+        const status = statusLabels[document.status] || document.status || "未知状态";
+        const statusClass = ["waiting", "processing", "done", "failed"].includes(document.status) ? document.status : "failed";
+        const extension = (document.file_name || "文档").split(".").pop().slice(0, 4).toUpperCase();
+        const iconClass = ["waiting", "processing"].includes(document.status) ? " is-processing" : "";
+        const deleteDisabled = document.status === "processing" ? ' disabled title="处理中，暂时无法删除"' : "";
+        return `<li class="document-item">
+            <div class="document-icon${iconClass}" aria-hidden="true">${escapeHtml(extension)}</div>
+            <div class="min-w-0">
+              <p class="document-name" title="${escapeHtml(document.file_name)}">${escapeHtml(document.file_name)}</p>
+              <div class="document-meta">
+                <span class="badge badge-sm status-badge status-${statusClass}">${escapeHtml(status)}</span>
+                <span>更新于 ${escapeHtml(formatDate(document.updated_at))}</span>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm danger-button" type="button" data-document-id="${escapeHtml(document.id)}" data-document-name="${escapeHtml(document.file_name)}"${deleteDisabled}>删除</button>
+          </li>`;
+      }).join("")}</ul>`;
+    }
+
+    async function readError(response, fallback) {
+      try {
+        const payload = await response.json();
+        return payload.detail || fallback;
+      } catch {
+        return `${fallback}（${response.status}）`;
+      }
+    }
+
+    async function loadDocuments({showLoading = false} = {}) {
+      if (showLoading) documentsRegion.innerHTML = '<div class="list-loading">正在读取文档列表……</div>';
+      try {
+        const response = await fetch("/documents", {headers: {Accept: "application/json"}});
+        if (!response.ok) throw new Error(await readError(response, "文档列表读取失败"));
+        const payload = await response.json();
+        const documents = Array.isArray(payload) ? payload : [];
+        connectionDot.className = "connection-dot is-online";
+        serviceMetric.textContent = "运行正常";
+        renderDocuments(documents);
+        const hasPending = documents.some((document) => ["waiting", "processing"].includes(document.status));
+        if (hasPending && !refreshTimer) refreshTimer = window.setInterval(() => loadDocuments(), 5000);
+        if (!hasPending && refreshTimer) {
+          window.clearInterval(refreshTimer);
+          refreshTimer = undefined;
+        }
+      } catch (error) {
+        waitingDocumentCount = 0;
+        updateStartButton();
+        connectionDot.className = "connection-dot is-offline";
+        serviceMetric.textContent = "连接失败";
+        documentCount.textContent = "!";
+        pendingMetric.textContent = "—";
+        completedMetric.textContent = "—";
+        documentsRegion.innerHTML = `<div class="list-error">${escapeHtml(error.message || "文档列表读取失败")}</div>`;
+      }
+    }
+
+    async function startDocumentProcessing() {
+      if (startingDocuments || waitingDocumentCount === 0) return;
+      startingDocuments = true;
+      updateStartButton();
+      setProcessingStatus("正在启动待处理文档……");
+      try {
+        const response = await fetch("/documents/start", {method: "POST"});
+        if (!response.ok) throw new Error(await readError(response, "启动处理失败"));
+        setProcessingStatus("已提交处理请求，文档状态将自动更新。", "success");
+        await loadDocuments();
+      } catch (error) {
+        setProcessingStatus(error.message || "启动处理失败", "error");
+      } finally {
+        startingDocuments = false;
+        updateStartButton();
+      }
+    }
+
+    async function uploadDocument(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+      submitButton.disabled = true;
+      fileInput.disabled = true;
+      setUploadStatus("正在上传……");
+      try {
+        const response = await fetch("/document", {method: "POST", body: formData});
+        if (!response.ok) throw new Error(await readError(response, "上传失败"));
+        form.reset();
+        showSelectedFile(null);
+        setUploadStatus(`上传成功：${file.name}`, "success");
+        await loadDocuments();
+      } catch (error) {
+        setUploadStatus(error.message || "上传失败", "error");
+      } finally {
+        submitButton.disabled = false;
+        fileInput.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const file = fileInput.files[0];
+      if (!file) {
+        setUploadStatus("请先选择要上传的文档。", "error");
+        fileInput.focus();
+        return;
+      }
+      uploadDocument(file);
+    });
+
+    startDocumentsButton.addEventListener("click", startDocumentProcessing);
+    fileInput.addEventListener("change", () => showSelectedFile(fileInput.files[0]));
+    removeFileButton.addEventListener("click", () => {
+      fileInput.value = "";
+      showSelectedFile(null);
+      setUploadStatus("等待选择文件");
+    });
+    ["dragenter", "dragover"].forEach((eventName) => dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropZone.classList.add("is-dragging");
+    }));
+    ["dragleave", "drop"].forEach((eventName) => dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("is-dragging");
+    }));
+    dropZone.addEventListener("drop", (event) => {
+      const [file] = event.dataTransfer.files;
+      if (!file) return;
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      fileInput.files = transfer.files;
+      showSelectedFile(file);
+    });
+
+    documentsRegion.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-document-id]");
+      if (!button || button.disabled) return;
+      const documentName = button.dataset.documentName || "这个文档";
+      if (!window.confirm(`确定要删除“${documentName}”吗？此操作无法撤销。`)) return;
+      button.disabled = true;
+      try {
+        const response = await fetch(`/document?document_id=${encodeURIComponent(button.dataset.documentId)}`, {method: "DELETE"});
+        if (!response.ok) throw new Error(await readError(response, "删除失败"));
+        await loadDocuments();
+      } catch (error) {
+        button.disabled = false;
+        await loadDocuments();
+        window.alert(error.message || "删除失败");
+      }
+    });
+
+    loadDocuments({showLoading: true});
+  </script>
+</body>
+
+</html>
