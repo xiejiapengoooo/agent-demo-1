@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 3000
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
-    agent_model: str = "gpt-5.6-luna"
+    agent_model: str = "gpt-5.6-sol"
     openai_base_url: str = "https://token.xiejiapeng.com/v1"
     agent_timeout: float = Field(default=30.0, gt=0)
     agent_max_research_rounds: int = Field(default=2, ge=1)
