@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="olive-sage">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f5ef">
+  <title>Agent 对话 · agent-demo-1</title>
+  <link href="./index.css" rel="stylesheet" type="text/css">
+</head>
+
+<body class="text-base-content">
+  <main class="page chat-layout">
+    <section class="panel chat-panel" aria-label="Agent 对话">
+      <div class="chat-scroll" id="chat-scroll">
+        <div class="welcome" id="welcome">
+          <h1>有什么想了解的？</h1>
+          <p>输入问题，开始对话。</p>
+        </div>
+        <ol class="messages" id="messages" aria-label="聊天记录" aria-live="polite" aria-relevant="additions text" hidden></ol>
+      </div>
+      <form class="composer" id="chat-form">
+        <div class="composer-error" id="chat-error" hidden>
+          <span id="error-message" role="alert"></span>
+          <button class="retry-button" id="retry-button" type="button">重试</button>
+        </div>
+        <div class="composer-box">
+          <label class="sr-only" for="question">输入你的问题</label>
+          <textarea id="question" name="question" rows="2" maxlength="8000" placeholder="输入你的问题……" aria-describedby="composer-hint character-count" required></textarea>
+          <div class="composer-actions">
+            <span class="character-count" id="character-count">0 / 8,000</span>
+            <button class="btn btn-primary primary-button send-button" id="send-button" type="submit" disabled><span id="send-label">发送</span><span aria-hidden="true">↑</span></button>
+          </div>
+        </div>
+        <div class="composer-footer">
+          <div class="conversation-actions">
+            <button id="new-chat-button" type="button">新建对话</button>
+            <a href="./doc.html">文档库</a>
+          </div>
+          <span class="keyboard-hint">Enter 发送 · Shift + Enter 换行</span>
+        </div>
+        <p class="sr-only" id="composer-hint">Enter 发送，Shift + Enter 换行。对话仅在当前页面保留，刷新后清空。</p>
+        <span class="sr-only" id="chat-status" role="status">等待提问</span>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("chat-form");
+    const questionInput = document.getElementById("question");
+    const sendButton = document.getElementById("send-button");
+    const sendLabel = document.getElementById("send-label");
+    const newChatButton = document.getElementById("new-chat-button");
+    const retryButton = document.getElementById("retry-button");
+    const chatStatus = document.getElementById("chat-status");
+    const chatScroll = document.getElementById("chat-scroll");
+    const welcome = document.getElementById("welcome");
+    const messages = document.getElementById("messages");
+    const chatError = document.getElementById("chat-error");
+    const errorMessage = document.getElementById("error-message");
+    const characterCount = document.getElementById("character-count");
+    const maxLength = 8000;
+    let history = [];
+    let busy = false;
+    let failedQuestion = "";
+
+    function updateInput() {
+      const length = Array.from(questionInput.value).length;
+      characterCount.textContent = `${length.toLocaleString("en-US")} / 8,000`;
+      sendButton.disabled = busy || !questionInput.value.trim() || length > maxLength;
+    }
+
+    function setBusy(value) {
+      busy = value;
+      questionInput.readOnly = value;
+      newChatButton.disabled = value;
+      retryButton.disabled = value;
+      chatStatus.textContent = value ? "正在整理回答" : history.length ? "可继续追问" : "等待提问";
+      sendLabel.textContent = value ? "等待回答" : "发送";
+      updateInput();
+    }
+
+    function updateConversation() {
+      welcome.hidden = messages.children.length > 0;
+      messages.hidden = !welcome.hidden;
+    }
+
+    function scrollToLatest() {
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+    }
+
+    function createElement(tag, className, text) {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      if (text !== undefined) element.textContent = text;
+      return element;
+    }
+
+    function appendMessage(role, content, {pending = false} = {}) {
+      const item = createElement("li", `message message-${role}${pending ? " message-pending" : ""}`);
+      const avatar = createElement("span", "message-avatar", role === "user" ? "你" : "AG");
+      avatar.setAttribute("aria-hidden", "true");
+      const body = createElement("div", "message-body");
+      const heading = createElement("div", "message-heading", role === "user" ? "你" : "Agent 文档助手");
+      const text = createElement("div", "message-text", content);
+      if (pending) {
+        const dots = createElement("span", "thinking-dots");
+        dots.setAttribute("aria-hidden", "true");
+        dots.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+        text.prepend(dots);
+      }
+      body.append(heading, text);
+      item.append(avatar, body);
+      messages.append(item);
+      return item;
+    }
+
+    function renderAnswer(item, result) {
+      item.classList.remove("message-pending");
+      item.querySelector(".message-text").textContent = result.answer;
+      item.querySelector(".message-heading").append(createElement("span", "route-label", result.route === "research" ? "文档检索" : "直接回答"));
+      const body = item.querySelector(".message-body");
+      if (result.sources.length) {
+        const sources = createElement("details", "sources");
+        sources.append(createElement("summary", "", `引用来源 · ${result.sources.length}`));
+        const list = createElement("ul", "source-list");
+        result.sources.forEach((source) => {
+          const entry = createElement("li", "source-item");
+          entry.append(
+            createElement("span", "source-name", source.file_name),
+            createElement("span", "source-meta", `引用 [${source.chunk_id}] · 相似度 ${source.score.toFixed(4)}`),
+          );
+          list.append(entry);
+        });
+        sources.append(list);
+        body.append(sources);
+      }
+      if (Array.from(result.answer).length > maxLength) {
+        body.append(createElement("p", "history-note", "这条回答较长，后续追问将使用其前 8,000 字作为上下文。"));
+      }
+    }
+
+    async function readError(response) {
+      const errors = {
+        422: "问题或历史消息不符合要求，请将每条消息控制在 8,000 字以内。",
+        502: "Agent 暂时无法回答，请稍后重试。",
+        504: "回答等待超时，请稍后重试，或缩小问题范围。",
+      };
+      if (errors[response.status]) return errors[response.status];
+      try {
+        const payload = await response.json();
+        if (typeof payload.detail === "string") return payload.detail;
+      } catch {
+        // Some servers return an HTML error page instead of JSON.
+      }
+      return `请求失败（${response.status}），请稍后重试。`;
+    }
+
+    function validateResult(result) {
+      return result && typeof result.answer === "string" && result.answer.trim()
+        && ["direct", "research"].includes(result.route) && Array.isArray(result.sources)
+        && result.sources.every((source) => source && typeof source.file_name === "string"
+          && typeof source.chunk_id === "string" && Number.isFinite(source.score));
+    }
+
+    async function sendQuestion(value) {
+      const question = value.trim();
+      if (busy || !question || Array.from(question).length > maxLength) return;
+      chatError.hidden = true;
+      failedQuestion = "";
+      setBusy(true);
+      questionInput.value = "";
+      updateInput();
+      const userMessage = appendMessage("user", question);
+      const assistantMessage = appendMessage("assistant", "正在整理回答，请稍候……", {pending: true});
+      updateConversation();
+      scrollToLatest();
+
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", Accept: "application/json"},
+          body: JSON.stringify({question, history}),
+        });
+        if (!response.ok) throw new Error(await readError(response));
+        let result;
+        try {
+          result = await response.json();
+        } catch {
+          throw new Error("未收到有效的回答，请稍后重试。");
+        }
+        if (!validateResult(result)) throw new Error("回答格式不完整，请稍后重试。");
+        renderAnswer(assistantMessage, result);
+        // The API limits every history message to 8,000 Unicode characters.
+        history.push(
+          {role: "user", content: question},
+          {role: "assistant", content: Array.from(result.answer.trim()).slice(0, maxLength).join("")},
+        );
+      } catch (error) {
+        userMessage.remove();
+        assistantMessage.remove();
+        questionInput.value = question;
+        failedQuestion = question;
+        errorMessage.textContent = error instanceof TypeError ? "无法连接到聊天服务，请检查网络后重试。" : error.message || "发送失败，请重试。";
+        chatError.hidden = false;
+      } finally {
+        setBusy(false);
+        updateConversation();
+        questionInput.focus({preventScroll: true});
+        scrollToLatest();
+      }
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendQuestion(questionInput.value);
+    });
+    questionInput.addEventListener("input", updateInput);
+    questionInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        if (!sendButton.disabled) form.requestSubmit();
+      }
+    });
+    retryButton.addEventListener("click", () => sendQuestion(failedQuestion));
+    newChatButton.addEventListener("click", () => {
+      if (busy) return;
+      history = [];
+      failedQuestion = "";
+      messages.replaceChildren();
+      form.reset();
+      chatError.hidden = true;
+      setBusy(false);
+      updateConversation();
+      questionInput.focus({preventScroll: true});
+      scrollToLatest();
+    });
+    updateInput();
+  </script>
+</body>
+
+</html>
