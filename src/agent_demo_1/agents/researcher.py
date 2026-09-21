@@ -69,13 +69,6 @@ class ResearcherAgent(BaseAgent):
         )
         return extract_evidence(result["messages"])
 
-    def research(
-        self,
-        goal: str,
-        existing_evidence: Sequence[Evidence] = (),
-    ) -> list[Evidence]:
-        return self.invoke(goal, existing_evidence)
-
     def _build_graph(self) -> Any:
         builder = StateGraph(ResearchState)
         builder.add_node("research_agent", self._call_model)

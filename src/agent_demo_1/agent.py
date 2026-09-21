@@ -206,7 +206,7 @@ class DocumentMultiAgent:
     def _cited_sources(answer: str, evidence: Sequence[Evidence]) -> list[Source]:
         sources = []
         for item in evidence:
-            if f"[{item.citation_id}]" not in answer:
+            if f"[{item.chunk_id}]" not in answer:
                 continue
             sources.append(Source.model_validate(item.model_dump(exclude={"text"})))
         return sources
