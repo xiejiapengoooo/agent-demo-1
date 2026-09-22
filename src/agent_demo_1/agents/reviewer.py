@@ -37,6 +37,7 @@ class ReviewerAgent(BaseAgent):
         self._reviewer = self.model.with_structured_output(
             ReviewDecision,
             method="function_calling",
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def invoke(
