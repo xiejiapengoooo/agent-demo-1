@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_openai import ChatOpenAI
+from langchain_deepseek import ChatDeepSeek
 from langgraph.graph import END, START, StateGraph, add_messages
-from pydantic import SecretStr
 
 from .agents import (
     AgentResult,
@@ -37,13 +35,12 @@ class AgentState(TypedDict):
 
 
 def _default_model(settings: Settings) -> BaseChatModel:
-    return ChatOpenAI(
+    return ChatDeepSeek(
         model=settings.agent_model,
-        base_url=settings.openai_base_url,
+        base_url=settings.agent_base_url,
         temperature=0,
         timeout=settings.agent_timeout,
         max_retries=2,
-        api_key=SecretStr(os.environ["SU8_API_KEY"]),
     )
 
 
