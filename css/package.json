@@ -2,7 +2,7 @@
   "scripts": {
     "build:doc": "tailwindcss -i ./doc.css -o ../static/doc/doc.css --minify",
     "build:index": "tailwindcss -i ./index.css -o ../static/index.css --minify",
-    "build:doc:watch": "tailwindcss -i ./doc.css -o ../static/doc.css --watch",
+    "build:doc:watch": "tailwindcss -i ./doc.css -o ../static/doc/doc.css --watch",
     "build:index:watch": "tailwindcss -i ./index.css -o ../static/index.css --watch"
   },
   "dependencies": {
