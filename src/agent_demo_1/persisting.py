@@ -40,7 +40,6 @@ _STORE_LOCK = RLock()
 CORE_FIELDS = frozenset(
     {
         "id",
-        "vector_id",
         "chunk_id",
         "document_id",
         "order",
@@ -112,8 +111,7 @@ def initialize_database() -> Path:
             );
 
             CREATE TABLE IF NOT EXISTS chunks (
-                id UUID NOT NULL PRIMARY KEY,
-                vector_id TEXT NOT NULL,
+                id INTEGER NOT NULL PRIMARY KEY CHECK (id >= 0),
                 document_id UUID NOT NULL,
                 chunk_order INTEGER NOT NULL,
                 chunk_type TEXT NOT NULL,
@@ -225,10 +223,10 @@ def delete_document(document_id: str) -> Document | None:
             )
         document_chunks = connection.execute(
             """
-            SELECT vector_id, metadata_json
+            SELECT id, metadata_json
             FROM chunks
             WHERE document_id = ?
-            ORDER BY vector_id
+            ORDER BY id
             """,
             (document_id,),
         ).fetchall()
@@ -241,7 +239,7 @@ def delete_document(document_id: str) -> Document | None:
             if (resource := _resource_path(metadata_json)) is not None
         }
 
-    vector_ids = [_vector_id(row[0]) for row in document_chunks]
+    chunk_ids = [_chunk_id(row[0]) for row in document_chunks]
     deleted_resources = {
         resource
         for row in document_chunks
@@ -263,10 +261,10 @@ def delete_document(document_id: str) -> Document | None:
                     "cannot delete indexed document without FAISS index and manifest"
                 )
             index, manifest = load_index()
-            removed = index.remove_ids(np.asarray(vector_ids, dtype=np.int64))
-            if removed != len(vector_ids):
+            removed = index.remove_ids(np.asarray(chunk_ids, dtype=np.int64))
+            if removed != len(chunk_ids):
                 raise ValueError(
-                    f"FAISS removed {removed} vectors; expected {len(vector_ids)}"
+                    f"FAISS removed {removed} vectors; expected {len(chunk_ids)}"
                 )
             faiss.write_index(index, str(temporary_index))
 
@@ -428,7 +426,7 @@ def persist_chunks(
         if existing_manifest.get("embedding_model") != embedding_model.strip():
             raise ValueError("embedding model does not match the existing index")
         base_index = faiss.clone_index(existing_index)
-        next_vector_id = _manifest_next_vector_id(
+        next_chunk_id = _manifest_next_chunk_id(
             existing_manifest,
             database_path,
         )
@@ -436,17 +434,18 @@ def persist_chunks(
         if existing_chunk_count:
             raise ValueError("chunks exist without a FAISS index and manifest")
         base_index = None
-        next_vector_id = 0
+        next_chunk_id = 0
 
-    if len(chunks) > int(np.iinfo(np.int64).max) - next_vector_id + 1:
-        raise OverflowError("no FAISS vector ids remain in the int64 range")
+    if len(chunks) > int(np.iinfo(np.int64).max) - next_chunk_id + 1:
+        raise OverflowError("no chunk ids remain in the int64 range")
 
     rows, vectors, image_assets = _prepare_chunks(
         chunks,
         documents,
-        vector_id_start=next_vector_id,
+        chunk_id_start=next_chunk_id,
     )
-    faiss_ids = np.asarray([int(row[1]) for row in rows], dtype=np.int64)
+    # Use the SQLite chunk primary keys directly as FAISS labels.
+    faiss_ids = np.asarray([row[0] for row in rows], dtype=np.int64)
     created_at = _utc_now()
     temporary_directory = Path(tempfile.mkdtemp(prefix=".temp-", dir=DATA_DIRECTORY))
 
@@ -493,7 +492,7 @@ def persist_chunks(
             "embedding_dimension": int(vectors.shape[1]),
             "document_count": document_count,
             "chunk_count": chunk_count,
-            "next_vector_id": next_vector_id + len(rows),
+            "next_chunk_id": next_chunk_id + len(rows),
             "index_sha256": index_sha256,
         }
         temporary_manifest.write_text(
@@ -544,10 +543,10 @@ def load_index() -> tuple[Any, dict[str, Any]]:
         raise ValueError("FAISS dimension does not match the manifest")
 
     faiss_ids = sorted(int(value) for value in faiss.vector_to_array(index.id_map))
-    database_ids = sorted(_database_vector_ids(database_path))
+    database_ids = sorted(_database_chunk_ids(database_path))
     if faiss_ids != database_ids:
-        raise ValueError("FAISS ids do not match chunks.vector_id values")
-    _manifest_next_vector_id(manifest, database_path)
+        raise ValueError("FAISS ids do not match chunks.id values")
+    _manifest_next_chunk_id(manifest, database_path)
     return index, manifest
 
 
@@ -563,7 +562,7 @@ def _prepare_chunks(
     chunks: Sequence[Mapping[str, Any]],
     documents: Sequence[Document],
     *,
-    vector_id_start: int = 0,
+    chunk_id_start: int = 0,
 ) -> tuple[list[tuple[Any, ...]], np.ndarray, list[ImageAsset]]:
     if not chunks:
         raise ValueError("at least one chunk is required")
@@ -575,7 +574,6 @@ def _prepare_chunks(
     rows: list[tuple[Any, ...]] = []
     vectors: list[list[float]] = []
     image_assets: dict[str, ImageAsset] = {}
-    seen_chunk_ids: set[str] = set()
     seen_orders: set[tuple[str, int]] = set()
     chunk_document_ids: set[str] = set()
     expected_dimension: int | None = None
@@ -584,11 +582,6 @@ def _prepare_chunks(
     for index, chunk in enumerate(chunks):
         if not isinstance(chunk, Mapping):
             raise TypeError(f"chunk at index {index} must be a mapping")
-
-        chunk_id = str(uuid4())
-        if chunk_id in seen_chunk_ids:
-            raise ValueError(f"duplicate chunk id: {chunk_id}")
-        seen_chunk_ids.add(chunk_id)
 
         document_id = _required_uuid(chunk, ("document_id",), index)
         if document_id not in document_ids:
@@ -647,8 +640,7 @@ def _prepare_chunks(
 
         rows.append(
             (
-                chunk_id,
-                str(vector_id_start + index),
+                chunk_id_start + index,
                 document_id,
                 chunk_order,
                 chunk_type,
@@ -706,7 +698,6 @@ def _write_database_snapshot(
             """
             INSERT INTO chunks (
                 id,
-                vector_id,
                 document_id,
                 chunk_order,
                 chunk_type,
@@ -715,7 +706,7 @@ def _write_database_snapshot(
                 page_end,
                 metadata_json,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -738,41 +729,30 @@ def _database_snapshot_counts(path: Path) -> tuple[int, int]:
     )
 
 
-def _manifest_next_vector_id(
+def _manifest_next_chunk_id(
     manifest: Mapping[str, Any],
     database_path: Path,
 ) -> int:
-    next_vector_id = manifest.get("next_vector_id")
+    next_chunk_id = manifest.get("next_chunk_id")
     if (
-        not isinstance(next_vector_id, int)
-        or isinstance(next_vector_id, bool)
-        or next_vector_id < 0
-        or next_vector_id > int(np.iinfo(np.int64).max) + 1
+        not isinstance(next_chunk_id, int)
+        or isinstance(next_chunk_id, bool)
+        or next_chunk_id < 0
+        or next_chunk_id > int(np.iinfo(np.int64).max) + 1
     ):
-        raise ValueError("manifest has an invalid next_vector_id")
+        raise ValueError("manifest has an invalid next_chunk_id")
 
-    vector_ids = _database_vector_ids(database_path)
-    if vector_ids and max(vector_ids) >= next_vector_id:
-        raise ValueError("manifest next_vector_id is not greater than existing ids")
-    return next_vector_id
+    chunk_ids = _database_chunk_ids(database_path)
+    if chunk_ids and max(chunk_ids) >= next_chunk_id:
+        raise ValueError("manifest next_chunk_id is not greater than existing ids")
+    return next_chunk_id
 
 
-def _database_vector_ids(path: Path) -> list[int]:
+def _database_chunk_ids(path: Path) -> list[int]:
     with sqlite3.connect(path) as connection:
-        rows = connection.execute("SELECT vector_id FROM chunks").fetchall()
+        rows = connection.execute("SELECT id FROM chunks").fetchall()
 
-    vector_ids = []
-    for (value,) in rows:
-        if not isinstance(value, str) or not value.isdecimal():
-            raise ValueError(f"invalid chunks.vector_id: {value!r}")
-        vector_id = int(value)
-        if vector_id > np.iinfo(np.int64).max:
-            raise ValueError(f"chunks.vector_id is outside int64 range: {value}")
-        vector_ids.append(vector_id)
-
-    if len(vector_ids) != len(set(vector_ids)):
-        raise ValueError("chunks.vector_id values must be unique")
-    return vector_ids
+    return [_chunk_id(value) for (value,) in rows]
 
 
 def _copy_database(source: Path, destination: Path) -> None:
@@ -952,13 +932,12 @@ def _resource_path(metadata_json: Any) -> Path | None:
     return resource
 
 
-def _vector_id(value: Any) -> int:
-    if not isinstance(value, str) or not value.isdecimal():
-        raise ValueError(f"invalid chunks.vector_id: {value!r}")
-    vector_id = int(value)
-    if vector_id > np.iinfo(np.int64).max:
-        raise ValueError(f"chunks.vector_id is outside int64 range: {value}")
-    return vector_id
+def _chunk_id(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"invalid chunks.id: {value!r}")
+    if value > np.iinfo(np.int64).max:
+        raise ValueError(f"chunks.id is outside int64 range: {value}")
+    return value
 
 
 def _required_uuid(
