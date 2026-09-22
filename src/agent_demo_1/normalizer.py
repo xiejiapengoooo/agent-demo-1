@@ -43,9 +43,8 @@ def normalize_blocks(
                 normalized["text"] = summary
 
         if block.get("type") == "table":
-            table_body_markdown = html_table_to_markdown(block.get("table_body", ""))
             normalized["text"] = (
-                table_body_markdown
+                block.get("table_body", "")
                 + "\n"
                 + "\n".join(block.get("table_footnote", []))
                 + "\n"
@@ -56,39 +55,6 @@ def normalize_blocks(
         result.append(normalized)
 
     return result
-
-
-def html_table_to_markdown(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
-
-    table = soup.find("table")
-    if not table:
-        return ""
-
-    rows = []
-
-    for tr in table.find_all("tr"):
-        cells = tr.find_all(["th", "td"])
-        row = [cell.get_text(" ", strip=True).replace("|", "\\|") for cell in cells]
-        if row:
-            rows.append(row)
-
-    if not rows:
-        return ""
-
-    header = rows[0]
-
-    result = [
-        "| " + " | ".join(header) + " |",
-        "| " + " | ".join(["---"] * len(header)) + " |",
-    ]
-
-    for row in rows[1:]:
-        # 防止列数不一致
-        row = row + [""] * (len(header) - len(row))
-        result.append("| " + " | ".join(row[: len(header)]) + " |")
-
-    return "\n".join(result)
 
 
 __all__ = ["normalize_blocks"]
