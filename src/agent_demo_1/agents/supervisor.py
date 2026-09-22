@@ -32,6 +32,7 @@ class SupervisorAgent(BaseAgent):
         self._router = self.model.with_structured_output(
             RouteDecision,
             method="function_calling",
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def invoke(self, messages: Sequence[BaseMessage]) -> RouteDecision:
