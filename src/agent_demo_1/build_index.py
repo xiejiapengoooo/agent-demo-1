@@ -1,7 +1,6 @@
 import os
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 from .chunking import chunk_blocks
 from .embedding import EMBEDDING_MODEL, embed_chunks
@@ -24,67 +23,70 @@ def build_index(document_ids: Sequence[str]) -> None:
 
 
 def process_documents(documents: Sequence[Document]) -> None:
-    try:
-        parser_registry = ParserRegistry()
-        parser_registry.register(DocxParser)
-        embedded_chunks: list[dict[str, Any]] = []
+    parser_registry = ParserRegistry()
+    parser_registry.register(DocxParser)
+    errors: list[Exception] = []
 
-        for document in documents:
+    for document in documents:
+        try:
             file = _document_path(document)
             result = parser_registry.parse(file)
             blocks = normalize_blocks(result["output"])
             chunks = chunk_blocks(blocks, document_id=document.id)
             if not chunks:
                 raise ValueError(f"document {document.id} produced no chunks")
-            embedded_chunks.extend(embed_chunks(chunks))
+            embedded_chunks = embed_chunks(chunks)
 
-        moved_files = _archive_documents(documents)
-        try:
-            persist_chunks(
-                embedded_chunks,
-                documents=documents,
-                embedding_model=EMBEDDING_MODEL,
-            )
-        except Exception:
-            _restore_documents(moved_files)
-            raise
-    except Exception:
-        mark_documents_failed([document.id for document in documents])
-        raise
+            moved_files = _archive_documents([document])
+            try:
+                persist_chunks(
+                    embedded_chunks,
+                    documents=[document],
+                    embedding_model=EMBEDDING_MODEL,
+                )
+            except Exception:
+                _restore_documents(moved_files)
+                raise
+        except Exception as error:
+            mark_documents_failed([document.id])
+            error.add_note(f"document {document.id}: {document.file_name}")
+            errors.append(error)
+
+    if errors:
+        raise ExceptionGroup("document processing failed", errors)
 
 
 def _document_path(document: Document) -> Path:
-    source_root = SOURCE_DIRECTORY.resolve()
-    file = (source_root / document.file_name).resolve()
-    try:
-        file.relative_to(source_root)
-    except ValueError as error:
-        raise ValueError(
-            f"document {document.id} file_name escapes the source directory"
-        ) from error
-    if not file.is_file():
-        raise FileNotFoundError(file)
-    return file
+    for directory in (SOURCE_DIRECTORY, DATA_SOURCE_DIRECTORY):
+        source_root = directory.resolve()
+        file = (source_root / document.file_name).resolve()
+        try:
+            file.relative_to(source_root)
+        except ValueError as error:
+            raise ValueError(
+                f"document {document.id} file_name escapes the source directory"
+            ) from error
+        if file.is_file():
+            return file
+    raise FileNotFoundError(SOURCE_DIRECTORY / document.file_name)
 
 
 def _archive_documents(documents: Sequence[Document]) -> list[tuple[Path, Path]]:
     DATA_SOURCE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    source_root = SOURCE_DIRECTORY.resolve()
     archived_root = DATA_SOURCE_DIRECTORY.resolve()
     moved_files: list[tuple[Path, Path]] = []
     try:
         for document in documents:
-            source = (source_root / document.file_name).resolve()
+            source = _document_path(document)
             destination = (archived_root / document.file_name).resolve()
             try:
-                source.relative_to(source_root)
                 destination.relative_to(archived_root)
             except ValueError as error:
                 raise ValueError(
                     f"document {document.id} file_name escapes a source directory"
                 ) from error
-            if not source.is_file():
-                raise FileNotFoundError(source)
+            if source == destination:
+                continue
             if destination.exists():
                 raise FileExistsError(destination)
             destination.parent.mkdir(parents=True, exist_ok=True)

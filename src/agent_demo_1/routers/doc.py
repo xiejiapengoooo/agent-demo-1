@@ -1,5 +1,4 @@
 import hashlib
-import os
 import tempfile
 from pathlib import Path
 from typing import Annotated
@@ -50,7 +49,6 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
 
     destination_directory = SOURCE_DIRECTORY
     destination_directory.mkdir(parents=True, exist_ok=True)
-    destination = destination_directory / filename
     temporary_path: Path | None = None
 
     try:
@@ -69,7 +67,9 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
 
         try:
             register_document(
-                file_name=filename, file_digest=digest.hexdigest().lower()
+                file_name=filename,
+                file_digest=digest.hexdigest().lower(),
+                upload_path=temporary_path,
             )
         except DocumentAlreadyExistsError as error:
             raise HTTPException(
@@ -77,7 +77,6 @@ async def post_document(file: UploadFile = DOCUMENT_UPLOAD_FILE) -> Response:
                 detail="document already exists",
             ) from error
 
-        os.replace(temporary_path, destination)
         temporary_path = None
     finally:
         await file.close()

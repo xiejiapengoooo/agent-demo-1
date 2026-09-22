@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -6,7 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
+from .persisting import recover_processing_documents
 from .routers import chat_router, doc_router
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncGenerator:
+    recover_processing_documents()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -14,6 +23,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title=settings.app_name,
+        lifespan=_lifespan,
     )
 
     app.add_middleware(

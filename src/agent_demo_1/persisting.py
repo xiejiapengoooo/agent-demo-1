@@ -127,7 +127,13 @@ def initialize_database() -> Path:
 
 
 @_locked_store()
-def register_document(file_name: str, file_digest: str) -> Document:
+def register_document(
+    file_name: str,
+    file_digest: str,
+    *,
+    upload_path: Path | None = None,
+) -> Document:
+    """Register a document, publishing an optional upload in the same directory."""
     if not isinstance(file_name, str) or not file_name.strip():
         raise ValueError("file_name must be a non-empty string")
     if (
@@ -146,38 +152,55 @@ def register_document(file_name: str, file_digest: str) -> Document:
         status=WAITING_STATUS,
     )
     database_path = initialize_database()
-    with sqlite3.connect(database_path) as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        existing_document = connection.execute(
-            """
-            SELECT 1
-            FROM documents
-            WHERE file_name = ? OR file_sha256 = ?
-            LIMIT 1
-            """,
-            (file_name, file_digest),
-        ).fetchone()
-        if existing_document is not None:
-            raise DocumentAlreadyExistsError(f"document already exists: {file_name}")
+    destination = upload_path.with_name(file_name) if upload_path is not None else None
+    moved_upload = False
+    try:
+        with sqlite3.connect(database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing_document = connection.execute(
+                """
+                SELECT 1
+                FROM documents
+                WHERE file_name = ? OR file_sha256 = ?
+                LIMIT 1
+                """,
+                (file_name, file_digest),
+            ).fetchone()
+            if existing_document is not None:
+                raise DocumentAlreadyExistsError(
+                    f"document already exists: {file_name}"
+                )
 
-        connection.execute(
-            """
-            INSERT INTO documents (
-                id,
-                file_sha256,
-                file_name,
-                updated_at,
-                status
-            ) VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                document.id,
-                document.file_sha256,
-                document.file_name,
-                document.updated_at,
-                document.status,
-            ),
-        )
+            connection.execute(
+                """
+                INSERT INTO documents (
+                    id,
+                    file_sha256,
+                    file_name,
+                    updated_at,
+                    status
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    document.id,
+                    document.file_sha256,
+                    document.file_name,
+                    document.updated_at,
+                    document.status,
+                ),
+            )
+            if upload_path is not None and destination is not None:
+                if destination.exists() or destination.is_symlink():
+                    raise DocumentAlreadyExistsError(
+                        f"document source already exists: {file_name}"
+                    )
+                # Keep waiting records invisible until their source is ready.
+                os.replace(upload_path, destination)
+                moved_upload = True
+    except BaseException:
+        if moved_upload and upload_path is not None and destination is not None:
+            os.replace(destination, upload_path)
+        raise
 
     return document
 
@@ -318,6 +341,16 @@ def read_waiting_documents() -> list[Document]:
         ).fetchall()
 
     return [_document_from_row(row, index) for index, row in enumerate(rows)]
+
+
+@_locked_store()
+def recover_processing_documents() -> None:
+    database_path = initialize_database()
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "UPDATE documents SET status = ?, updated_at = ? WHERE status = ?",
+            (WAITING_STATUS, _utc_now(), PROCESSING_STATUS),
+        )
 
 
 @_locked_store()
@@ -1015,5 +1048,6 @@ __all__ = [
     "mark_documents_processing",
     "persist_chunks",
     "read_documents",
+    "recover_processing_documents",
     "register_document",
 ]
