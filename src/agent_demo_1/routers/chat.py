@@ -1,13 +1,17 @@
+from collections.abc import AsyncIterator
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
+from uuid import uuid4
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from openai import APITimeoutError
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from starlette.concurrency import run_in_threadpool
 
 from ..agent import AgentResult, DocumentMultiAgent
+from ..events import AgentEvent
 from ..logger import get_logger
 
 router = APIRouter()
@@ -57,7 +61,7 @@ async def post_chat(
 ) -> AgentResult:
     history = _to_langchain_messages(request.history)
     try:
-        return await run_in_threadpool(agent.ask, request.question, history)
+        return await anyio.to_thread.run_sync(agent.ask, request.question, history)
     except (APITimeoutError, TimeoutError) as error:
         logger.exception("chat request timed out")
         raise HTTPException(
@@ -70,6 +74,49 @@ async def post_chat(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="chat service failed",
         ) from error
+
+
+@router.post("/chat/stream", response_class=EventSourceResponse)
+async def post_chat_stream(
+    request: ChatRequest,
+    agent: Annotated[DocumentMultiAgent, Depends(get_document_agent)],
+) -> AsyncIterator[ServerSentEvent]:
+    run_id = uuid4().hex
+    seq = 0
+
+    def event(payload: dict[str, Any]) -> ServerSentEvent:
+        nonlocal seq
+        seq += 1
+        data = AgentEvent(run_id=run_id, seq=seq, **payload)
+        return ServerSentEvent(id=f"{run_id}:{seq}", event=data.type, data=data)
+
+    yield event({"type": "run.start", "status": "running"})
+    stream = agent.astream(request.question, _to_langchain_messages(request.history))
+    try:
+        async for payload in stream:
+            yield event(payload)
+    except Exception as error:
+        logger.exception("streaming chat request failed")
+        timed_out = isinstance(error, (APITimeoutError, TimeoutError))
+        yield event(
+            {
+                "type": "error",
+                "status": "error",
+                "data": {
+                    "code": "timeout" if timed_out else "agent_error",
+                    "message": (
+                        "回答等待超时，请稍后重试。"
+                        if timed_out
+                        else "Agent 暂时无法回答，请稍后重试。"
+                    ),
+                },
+            }
+        )
+    else:
+        yield event({"type": "run.end", "status": "success"})
+    finally:
+        with anyio.CancelScope(shield=True):
+            await stream.aclose()
 
 
 __all__ = [

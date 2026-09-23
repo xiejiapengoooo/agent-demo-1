@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
 from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 
 from langchain_core.language_models import BaseChatModel
@@ -21,6 +22,7 @@ from .agents import (
 )
 from .agents.common import last_user_text, merge_evidence
 from .config import Settings, get_settings
+from .events import execution_step
 
 
 class AgentState(TypedDict):
@@ -63,27 +65,60 @@ class DocumentMultiAgent:
         question: str,
         history: Sequence[BaseMessage] = (),
     ) -> AgentResult:
+        state = self._graph.invoke(
+            self._initial_state(question, history),
+            config={"recursion_limit": self.settings.agent_recursion_limit},
+        )
+        return self._result(state)
+
+    async def astream(
+        self,
+        question: str,
+        history: Sequence[BaseMessage] = (),
+    ) -> AsyncGenerator[dict[str, Any]]:
+        state = self._initial_state(question, history)
+        async with aclosing(
+            self._graph.astream(
+                state,
+                config={"recursion_limit": self.settings.agent_recursion_limit},
+                stream_mode=["custom", "values"],
+                subgraphs=True,
+            )
+        ) as events:
+            async for namespace, mode, payload in events:
+                if mode == "custom":
+                    yield payload
+                elif mode == "values" and not namespace:
+                    # State includes private prompts and drafts; keep it server-side.
+                    state = payload
+        yield {
+            "type": "answer.final",
+            "data": self._result(state).model_dump(mode="json"),
+        }
+
+    @staticmethod
+    def _initial_state(
+        question: str,
+        history: Sequence[BaseMessage],
+    ) -> AgentState:
         if not isinstance(question, str) or not question.strip():
             raise ValueError("question must be a non-empty string")
         if any(not isinstance(message, BaseMessage) for message in history):
             raise TypeError("history must contain LangChain messages")
 
-        initial_state: AgentState = {
+        return {
             "messages": [*history, HumanMessage(content=question.strip())],
             "evidence": [],
             "research_rounds": 0,
             "revision_rounds": 0,
             "review": None,
         }
-        state = self._graph.invoke(
-            initial_state,
-            config={"recursion_limit": self.settings.agent_recursion_limit},
-        )
 
+    def _result(self, state: AgentState) -> AgentResult:
         answer = state.get("draft", "").strip()
         if not answer:
             raise RuntimeError("agent returned an empty answer")
-        route = cast(Literal["direct", "research"], state["route"])
+        route = cast(Literal["direct", "research"], state.get("route"))
         sources = self._cited_sources(answer, state.get("evidence", []))
         return AgentResult(answer=answer, sources=sources, route=route)
 
@@ -117,7 +152,9 @@ class DocumentMultiAgent:
         return builder.compile()
 
     def _supervisor_node(self, state: AgentState) -> dict[str, Any]:
-        decision = self._supervisor.invoke(state["messages"])
+        with execution_step("supervisor") as progress:
+            decision = self._supervisor.invoke(state["messages"])
+            progress["route"] = decision.route
         return {
             "route": decision.route,
             "research_goal": (decision.research_goal or "").strip(),
@@ -129,10 +166,15 @@ class DocumentMultiAgent:
         if review is not None and review.verdict == "more_research":
             goal = (review.missing_query or review.feedback or goal).strip()
 
-        evidence = self._researcher.invoke(
-            goal,
-            existing_evidence=state.get("evidence", []),
-        )
+        with execution_step(
+            "researcher",
+            round=state.get("research_rounds", 0) + 1,
+        ) as progress:
+            evidence = self._researcher.invoke(
+                goal,
+                existing_evidence=state.get("evidence", []),
+            )
+            progress["evidence_count"] = len(evidence)
         return {
             "evidence": evidence,
             "research_rounds": state.get("research_rounds", 0) + 1,
@@ -147,12 +189,13 @@ class DocumentMultiAgent:
             review_feedback = review.feedback
             revision_rounds += 1
 
-        answer = self._answerer.invoke(
-            state["messages"],
-            route=self._route_after_supervisor(state),
-            evidence=state.get("evidence", []),
-            review_feedback=review_feedback,
-        )
+        with execution_step("answerer", revising=review_feedback is not None):
+            answer = self._answerer.invoke(
+                state["messages"],
+                route=self._route_after_supervisor(state),
+                evidence=state.get("evidence", []),
+                review_feedback=review_feedback,
+            )
         return {
             "draft": answer,
             "revision_rounds": revision_rounds,
@@ -163,11 +206,17 @@ class DocumentMultiAgent:
         draft = state.get("draft")
         if draft is None:
             raise RuntimeError("answerer did not provide a draft")
-        decision = self._reviewer.invoke(
-            question=last_user_text(state["messages"]),
-            draft=draft,
-            evidence=state.get("evidence", []),
-        )
+        with execution_step("reviewer") as progress:
+            decision = self._reviewer.invoke(
+                question=last_user_text(state["messages"]),
+                draft=draft,
+                evidence=state.get("evidence", []),
+            )
+            progress["verdict"] = decision.verdict
+            progress["limit_reached"] = (
+                decision.verdict != "pass"
+                and self._route_after_review({**state, "review": decision}) == "pass"
+            )
         return {"review": decision}
 
     @staticmethod

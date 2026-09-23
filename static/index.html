@@ -117,6 +117,7 @@
 
     function renderAnswer(item, result) {
       item.classList.remove("message-pending");
+      item.querySelector(".message-text").hidden = false;
       item.querySelector(".message-text").textContent = result.answer;
       item.querySelector(".message-heading").append(createElement("span", "route-label", result.route === "research" ? "文档检索" : "直接回答"));
       const body = item.querySelector(".message-body");
@@ -163,7 +164,134 @@
           && typeof source.chunk_id === "string" && Number.isFinite(source.score));
     }
 
-    async function sendQuestion(value) {
+    function describeStep(event) {
+      const data = event.data;
+      const running = event.status === "running";
+      const titles = {
+        supervisor: "判断回答路径",
+        researcher: `收集文档证据${data.round ? ` · 第 ${data.round} 轮` : ""}`,
+        search_documents: "检索知识库",
+        answerer: data.revising ? "修改回答" : "整理回答",
+        reviewer: "审核回答与引用",
+      };
+      let detail = running ? "正在执行……" : "已完成";
+      if (event.status === "error") detail = "执行失败";
+      else if (!running) {
+        if (event.node === "supervisor") detail = data.route === "research" ? "需要检索文档" : "可以直接回答";
+        if (event.node === "researcher" || event.node === "search_documents") {
+          detail = data.evidence_count ? `找到 ${data.evidence_count} 条相关证据` : "未找到新的相关证据";
+          if (data.file_names?.length) detail += ` · ${data.file_names.join("、")}`;
+        }
+        if (event.node === "answerer") detail = "回答已整理";
+        if (event.node === "reviewer") {
+          detail = data.limit_reached ? "已达到处理轮数上限，将返回当前回答"
+            : {pass: "审核通过", revise: "需要修改回答", more_research: "需要补充检索"}[data.verdict] || "审核完成";
+        }
+      }
+      return {title: titles[event.node] || "处理问题", detail};
+    }
+
+    function createExecution(item) {
+      const panel = createElement("details", "execution");
+      panel.open = true;
+      const summary = createElement("summary", "", "执行过程 · 正在连接");
+      const list = createElement("ol", "execution-list");
+      panel.append(summary, list);
+      item.querySelector(".message-body").insertBefore(panel, item.querySelector(".message-text"));
+      const steps = new Map();
+      const started = performance.now();
+
+      return {
+        update(event) {
+          if (event.type === "run.start") {
+            summary.textContent = "执行过程 · 开始处理";
+            item.querySelector(".message-text").hidden = true;
+            return;
+          }
+          if (!["step.start", "step.end", "tool.start", "tool.end"].includes(event.type)) return;
+          if (!event.step_id) throw new Error("执行事件缺少步骤标识，请重试。");
+          const {title, detail} = describeStep(event);
+          let step = steps.get(event.step_id);
+          if (!step) {
+            const row = createElement("li", `execution-step${event.type.startsWith("tool.") ? " execution-tool" : ""}`);
+            const marker = createElement("span", "execution-marker");
+            marker.setAttribute("aria-hidden", "true");
+            const content = createElement("div", "execution-content");
+            const name = createElement("span", "execution-name");
+            const description = createElement("span", "execution-detail");
+            const duration = createElement("span", "execution-duration");
+            content.append(name, description);
+            row.append(marker, content, duration);
+            list.append(row);
+            step = {row, marker, name, description, duration};
+            steps.set(event.step_id, step);
+          }
+          step.row.dataset.status = event.status;
+          step.marker.textContent = event.status === "running" ? "" : event.status === "error" ? "!" : "✓";
+          step.name.textContent = title;
+          step.description.textContent = detail;
+          if (Number.isFinite(event.data.duration_ms)) step.duration.textContent = `${(event.data.duration_ms / 1000).toFixed(1)} 秒`;
+          summary.textContent = `执行过程 · ${event.status === "running" ? title : detail}`;
+          chatStatus.textContent = `${title}，${detail}`;
+        },
+        finish(success) {
+          for (const step of steps.values()) {
+            if (step.row.dataset.status !== "running") continue;
+            step.row.dataset.status = "error";
+            step.marker.textContent = "!";
+            step.description.textContent = "执行中断";
+          }
+          summary.textContent = `执行过程 · ${success ? "已完成" : "未完成"} · ${((performance.now() - started) / 1000).toFixed(1)} 秒`;
+          panel.open = !success;
+          panel.classList.toggle("execution-failed", !success);
+        },
+      };
+    }
+
+    async function readEventStream(response, onEvent) {
+      if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
+        throw new Error("未收到有效的执行事件流，请稍后重试。");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let runId = null;
+      let lastSeq = 0;
+      try {
+        while (true) {
+          const {value, done} = await reader.read();
+          buffer += done ? decoder.decode() : decoder.decode(value, {stream: true});
+          let boundary;
+          while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+            const frame = buffer.slice(0, boundary.index);
+            buffer = buffer.slice(boundary.index + boundary[0].length);
+            const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).replace(/^ /, "")).join("\n");
+            if (!data) continue; // Heartbeat comments carry no event.
+            let event;
+            try {
+              event = JSON.parse(data);
+            } catch {
+              throw new Error("执行事件格式不正确，请稍后重试。");
+            }
+            if (!event || typeof event.run_id !== "string" || !Number.isInteger(event.seq)
+              || typeof event.type !== "string" || !event.data || typeof event.data !== "object") {
+              throw new Error("执行事件不完整，请稍后重试。");
+            }
+            if (runId === null) runId = event.run_id;
+            if (runId !== event.run_id || event.seq !== lastSeq + 1) throw new Error("执行事件顺序异常，请重试。");
+            lastSeq = event.seq;
+            if (onEvent(event)) return;
+          }
+          if (done) throw new Error("连接已中断，未收到完整回答，请重试。");
+        }
+      } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
+    }
+
+    async function sendQuestion(value, {retry = false} = {}) {
       const question = value.trim();
       if (busy || !question || Array.from(question).length > maxLength) return;
       chatError.hidden = true;
@@ -171,25 +299,36 @@
       setBusy(true);
       questionInput.value = "";
       updateInput();
-      const userMessage = appendMessage("user", question);
-      const assistantMessage = appendMessage("assistant", "正在整理回答，请稍候……", {pending: true});
+      if (!retry) appendMessage("user", question);
+      const assistantMessage = appendMessage("assistant", "正在连接，请稍候……", {pending: true});
+      const execution = createExecution(assistantMessage);
       updateConversation();
       scrollToLatest();
 
       try {
-        const response = await fetch("/chat", {
+        const response = await fetch("/chat/stream", {
           method: "POST",
-          headers: {"Content-Type": "application/json", Accept: "application/json"},
+          headers: {"Content-Type": "application/json", Accept: "text/event-stream"},
           body: JSON.stringify({question, history}),
         });
         if (!response.ok) throw new Error(await readError(response));
         let result;
-        try {
-          result = await response.json();
-        } catch {
-          throw new Error("未收到有效的回答，请稍后重试。");
-        }
-        if (!validateResult(result)) throw new Error("回答格式不完整，请稍后重试。");
+        await readEventStream(response, (event) => {
+          const nearBottom = chatScroll.scrollHeight - chatScroll.scrollTop - chatScroll.clientHeight < 80;
+          if (event.type === "error") throw new Error(event.data.message || "执行失败，请重试。");
+          if (event.type === "answer.final") {
+            if (!validateResult(event.data)) throw new Error("回答格式不完整，请稍后重试。");
+            result = event.data;
+          }
+          if (event.type === "run.end") {
+            if (!result || event.status !== "success") throw new Error("未收到完整回答，请稍后重试。");
+            return true;
+          }
+          execution.update(event);
+          if (nearBottom) scrollToLatest();
+          return false;
+        });
+        execution.finish(true);
         renderAnswer(assistantMessage, result);
         // The API limits every history message to 8,000 Unicode characters.
         history.push(
@@ -197,8 +336,11 @@
           {role: "assistant", content: Array.from(result.answer.trim()).slice(0, maxLength).join("")},
         );
       } catch (error) {
-        userMessage.remove();
-        assistantMessage.remove();
+        execution.finish(false);
+        assistantMessage.classList.remove("message-pending");
+        const text = assistantMessage.querySelector(".message-text");
+        text.hidden = false;
+        text.textContent = "未能完成回答，可查看上方执行过程并重试。";
         questionInput.value = question;
         failedQuestion = question;
         errorMessage.textContent = error instanceof TypeError ? "无法连接到聊天服务，请检查网络后重试。" : error.message || "发送失败，请重试。";
@@ -222,7 +364,7 @@
         if (!sendButton.disabled) form.requestSubmit();
       }
     });
-    retryButton.addEventListener("click", () => sendQuestion(failedQuestion));
+    retryButton.addEventListener("click", () => sendQuestion(failedQuestion, {retry: true}));
     newChatButton.addEventListener("click", () => {
       if (busy) return;
       history = [];

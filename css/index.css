@@ -44,6 +44,20 @@ a:focus-visible, textarea:focus-visible, summary:focus-visible {
 .source-meta { color: var(--muted); font-size: 11px; }
 .history-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
 
+.execution { margin: 0 0 14px; border: 1px solid var(--line); background: var(--soft); }
+.execution summary { padding: 10px 12px; color: var(--muted); cursor: pointer; font-size: 12px; overflow-wrap: anywhere; }
+.execution-list { display: grid; margin: 0; padding: 4px 12px 12px; gap: 12px; list-style: none; }
+.execution-step { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: 8px; font-size: 12px; }
+.execution-tool { margin-left: 24px; }
+.execution-marker { display: grid; width: 14px; height: 14px; margin-top: 3px; place-items: center; color: var(--accent-dark); font-size: 11px; line-height: 1; }
+.execution-step[data-status="running"] .execution-marker { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: execution-spin 0.8s linear infinite; }
+.execution-content { display: grid; min-width: 0; gap: 3px; overflow-wrap: anywhere; }
+.execution-name { font-weight: 600; }
+.execution-detail, .execution-duration { color: var(--muted); font-size: 11px; }
+.execution-duration { white-space: nowrap; }
+.execution-step[data-status="error"] .execution-marker, .execution-failed summary { color: var(--danger); }
+@keyframes execution-spin { to { transform: rotate(360deg); } }
+
 .composer { padding: 16px 24px 18px; border-top: 1px solid var(--line); }
 .composer-box { border: 1px solid var(--line); background: var(--panel); transition: border-color 160ms ease; }
 .composer-box:focus-within { border-color: var(--accent); }

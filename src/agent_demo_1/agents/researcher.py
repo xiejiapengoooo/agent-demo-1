@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph, add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field
 
+from ..events import execution_step
 from ..retrieval import retrieve_chunks
 from .base import BaseAgent
 from .common import (
@@ -97,7 +98,12 @@ class ResearcherAgent(BaseAgent):
             query: str,
         ) -> tuple[str, list[dict[str, Any]]]:
             """检索项目知识库，返回与问题最相关的文档证据。"""
-            evidence = normalize_chunks(retrieve_chunks(query.strip()))
+            with execution_step("search_documents", tool=True) as progress:
+                evidence = normalize_chunks(retrieve_chunks(query.strip()))
+                progress["evidence_count"] = len(evidence)
+                progress["file_names"] = list(
+                    dict.fromkeys(item.file_name for item in evidence)
+                )
             artifact = [item.model_dump(mode="json") for item in evidence]
             return format_evidence(evidence), artifact
 
