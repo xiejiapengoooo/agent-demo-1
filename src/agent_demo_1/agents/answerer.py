@@ -7,7 +7,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from .base import BaseAgent
 from .common import Evidence, format_evidence, message_text
 
-ANSWERER_PROMPT = """你是答案撰写员。请直接、清晰地回答用户问题。
+ANSWERER_PROMPT = """你是一个Agent。请直接、清晰地回答用户问题。
 
 当提供了知识库证据时：
 - 只能依据证据陈述知识库事实；证据不足时明确说明没有找到。
