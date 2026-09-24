@@ -7,11 +7,15 @@ from typing import Any
 
 import dashscope
 
+from .logger import get_logger
+
 EMBEDDING_MODEL = "tongyi-embedding-vision-plus"
 BATCH_SIZE = 10
 MAX_WORKERS = 3
 MAX_RETRIES = 3
 RETRY_DELAY = 2
+
+_logger = get_logger(__name__)
 
 
 def embed_chunks(
@@ -27,7 +31,7 @@ def embed_chunks(
         for start in range(0, len(inputs), BATCH_SIZE)
     ]
 
-    print(
+    _logger.debug(
         f"Embedding: 总共 {len(chunks)} 个 chunk，分成 {len(batches)} 批，"
         f"每批最多 {BATCH_SIZE} 个"
     )
@@ -118,13 +122,15 @@ def _embed_batch(
                 )
 
             vectors = _response_vectors(response, len(batch))
-            print(f"Embedding: 批次 {batch_index + 1} 成功，返回 {len(vectors)} 个向量")
+            _logger.debug(
+                f"Embedding: 批次 {batch_index + 1} 成功，返回 {len(vectors)} 个向量"
+            )
             return vectors
         except Exception as error:
             last_error = error
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_DELAY * (2**attempt)
-                print(
+                _logger.debug(
                     f"Embedding: 批次 {batch_index + 1} 失败，"
                     f"{delay} 秒后进行第 {attempt + 2}/{MAX_RETRIES} 次尝试：{error}"
                 )

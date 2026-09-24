@@ -15,7 +15,7 @@ from ..events import AgentEvent
 from ..logger import get_logger
 
 router = APIRouter()
-logger = get_logger(__name__)
+_logger = get_logger(__name__)
 
 ChatText = Annotated[
     str,
@@ -63,13 +63,13 @@ async def post_chat(
     try:
         return await anyio.to_thread.run_sync(agent.ask, request.question, history)
     except (APITimeoutError, TimeoutError) as error:
-        logger.exception("chat request timed out")
+        _logger.exception("chat request timed out")
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="chat service timed out",
         ) from error
     except Exception as error:
-        logger.exception("chat request failed")
+        _logger.exception("chat request failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="chat service failed",
@@ -96,7 +96,7 @@ async def post_chat_stream(
         async for payload in stream:
             yield event(payload)
     except Exception as error:
-        logger.exception("streaming chat request failed")
+        _logger.exception("streaming chat request failed")
         timed_out = isinstance(error, (APITimeoutError, TimeoutError))
         yield event(
             {
