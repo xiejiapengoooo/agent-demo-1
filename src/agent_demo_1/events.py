@@ -17,6 +17,7 @@ class AgentEvent(BaseModel):
         "step.end",
         "tool.start",
         "tool.end",
+        "answer.delta",
         "answer.final",
         "run.end",
         "error",

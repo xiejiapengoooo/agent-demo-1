@@ -301,6 +301,7 @@
       updateInput();
       if (!retry) appendMessage("user", question);
       const assistantMessage = appendMessage("assistant", "正在连接，请稍候……", {pending: true});
+      const answerText = assistantMessage.querySelector(".message-text");
       const execution = createExecution(assistantMessage);
       updateConversation();
       scrollToLatest();
@@ -316,6 +317,16 @@
         await readEventStream(response, (event) => {
           const nearBottom = chatScroll.scrollHeight - chatScroll.scrollTop - chatScroll.clientHeight < 80;
           if (event.type === "error") throw new Error(event.data.message || "执行失败，请重试。");
+          if (event.type === "step.start" && event.node === "answerer") {
+            answerText.textContent = "";
+            answerText.hidden = true;
+          }
+          if (event.type === "answer.delta") {
+            if (typeof event.data.text !== "string") throw new Error("回答片段格式不正确，请稍后重试。");
+            assistantMessage.classList.remove("message-pending");
+            answerText.hidden = false;
+            answerText.append(document.createTextNode(event.data.text));
+          }
           if (event.type === "answer.final") {
             if (!validateResult(event.data)) throw new Error("回答格式不完整，请稍后重试。");
             result = event.data;

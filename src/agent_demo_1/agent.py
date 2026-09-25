@@ -5,7 +5,7 @@ from contextlib import aclosing
 from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_deepseek import ChatDeepSeek
 from langgraph.graph import END, START, StateGraph, add_messages
 
@@ -76,20 +76,44 @@ class DocumentMultiAgent:
         question: str,
         history: Sequence[BaseMessage] = (),
     ) -> AsyncGenerator[dict[str, Any]]:
+        """Stream answer.delta text, resetting on each answerer step.start.
+
+        answer.final contains the authoritative answer after review.
+        """
         state = self._initial_state(question, history)
+        answer_step_id = None
         async with aclosing(
             self._graph.astream(
                 state,
                 config={"recursion_limit": self.settings.agent_recursion_limit},
-                stream_mode=["custom", "values"],
+                stream_mode=["custom", "messages", "values"],
                 subgraphs=True,
             )
         ) as events:
             async for namespace, mode, payload in events:
                 if mode == "custom":
+                    if (
+                        not namespace
+                        and payload.get("type") == "step.start"
+                        and payload.get("node") == "answerer"
+                    ):
+                        answer_step_id = payload["step_id"]
                     yield payload
+                elif mode == "messages" and not namespace:
+                    message, metadata = payload
+                    if (
+                        metadata.get("langgraph_node") == "answerer"
+                        and isinstance(message, AIMessage)
+                        and (text := message.text)
+                    ):
+                        yield {
+                            "type": "answer.delta",
+                            "node": "answerer",
+                            "step_id": answer_step_id,
+                            "data": {"text": text},
+                        }
                 elif mode == "values" and not namespace:
-                    # State includes private prompts and drafts; keep it server-side.
+                    # Raw graph state includes private prompts; keep it server-side.
                     state = payload
         yield {
             "type": "answer.final",
