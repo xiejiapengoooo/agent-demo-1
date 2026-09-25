@@ -4,24 +4,22 @@ import json
 import math
 import sqlite3
 from collections.abc import Mapping, Sequence
-from functools import lru_cache
+from http import HTTPStatus
 from pathlib import Path
-from threading import Lock
 from typing import Any
 
+import dashscope
 import faiss
 import jieba
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-from .embedding import EMBEDDING_MODEL, embed_chunks
+from .embedding import EMBEDDING_MODEL, _response_value, embed_chunks
 from .persisting import DATA_DIRECTORY, DATABASE_FILENAME, _locked_store, load_index
 
-RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
+RERANK_MODEL = "qwen3.7-text-rerank"
 _CANDIDATE_MULTIPLIER = 5
 _MIN_CANDIDATES = 20
-_RERANK_BATCH_SIZE = 8
-_RERANK_LOCK = Lock()
 
 
 def retrieve_chunks(
@@ -170,49 +168,56 @@ def _embed_query(query: str) -> np.ndarray:
     return vector
 
 
-@lru_cache(maxsize=1)
-def _load_reranker() -> tuple[Any, Any, Any]:
-    import torch
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(RERANK_MODEL)
-    model = AutoModelForSequenceClassification.from_pretrained(RERANK_MODEL)
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-    model.to(device)
-    model.eval()
-    return tokenizer, model, device
-
-
 def _rerank(query: str, candidates: Sequence[Mapping[str, Any]]) -> list[float]:
-    import torch
-
+    """Return DashScope relevance scores in the original candidate order."""
     if not candidates:
         return []
 
-    scores: list[float] = []
-    # Serialize initialization and inference to bound memory for concurrent queries.
-    with _RERANK_LOCK, torch.inference_mode():
-        tokenizer, model, device = _load_reranker()
-        for start in range(0, len(candidates), _RERANK_BATCH_SIZE):
-            batch = candidates[start : start + _RERANK_BATCH_SIZE]
-            encoded = tokenizer(
-                [(query, candidate["text"]) for candidate in batch],
-                padding=True,
-                truncation=True,
-                max_length=512,
-                return_tensors="pt",
+    # Keep candidates in one request: scores are relative to that request.
+    response = dashscope.TextReRank.call(
+        model=RERANK_MODEL,
+        query=query,
+        documents=[candidate["text"] for candidate in candidates],
+        top_n=len(candidates),
+    )
+    status_code = _response_value(response, "status_code")
+    if status_code != HTTPStatus.OK:
+        code = _response_value(response, "code", "unknown")
+        message = _response_value(response, "message", "unknown error")
+        raise RuntimeError(
+            f"DashScope rerank failed with status {status_code}: {code} - {message}"
+        )
+
+    results = _response_value(_response_value(response, "output"), "results")
+    if (
+        not isinstance(results, Sequence)
+        or isinstance(results, (str, bytes))
+        or len(results) != len(candidates)
+    ):
+        raise RuntimeError("DashScope rerank returned incomplete results")
+
+    scores: list[float | None] = [None] * len(candidates)
+    for result in results:
+        index = _response_value(result, "index")
+        score = _response_value(result, "relevance_score")
+        if (
+            not isinstance(index, int)
+            or isinstance(index, bool)
+            or not 0 <= index < len(candidates)
+            or scores[index] is not None
+        ):
+            raise RuntimeError(
+                "DashScope rerank returned an invalid or duplicate index"
             )
-            encoded = {key: value.to(device) for key, value in encoded.items()}
-            logits = model(**encoded, return_dict=True).logits.reshape(-1).float()
-            if logits.numel() != len(batch) or not torch.isfinite(logits).all():
-                raise RuntimeError("reranker returned invalid scores")
-            scores.extend(torch.sigmoid(logits).cpu().tolist())
-    return scores
+        if (
+            not isinstance(score, (int, float))
+            or isinstance(score, bool)
+            or not math.isfinite(score)
+            or not 0 <= score <= 1
+        ):
+            raise RuntimeError("DashScope rerank returned an invalid relevance score")
+        scores[index] = float(score)
+    return [score for score in scores if score is not None]
 
 
 __all__ = ["retrieve_chunks"]
