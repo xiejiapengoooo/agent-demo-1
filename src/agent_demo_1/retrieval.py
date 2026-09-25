@@ -1,15 +1,28 @@
 import json
+import logging
 import math
 import sqlite3
 from collections.abc import Sequence
 from contextlib import closing
+from functools import lru_cache
+from threading import RLock
 from typing import Any
 
-import faiss
+import jieba
 import numpy as np
+import torch
+from rank_bm25 import BM25Okapi
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from . import persisting
-from .embedding import EMBEDDING_MODEL, embed_chunks
+
+jieba.setLogLevel(logging.WARNING)
+
+RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+BM25_CANDIDATE_MULTIPLIER = 5
+BM25_MIN_CANDIDATES = 20
+
+_RERANKER_LOCK = RLock()
 
 
 def retrieve_chunks(
@@ -30,54 +43,129 @@ def retrieve_chunks(
         if not -1 <= min_score <= 1:
             raise ValueError("min_score must be between -1 and 1")
 
-    index, manifest = persisting.load_index()
-    _validate_index(index, manifest)
-    if index.ntotal == 0:
+    rows = _read_chunks()
+    if not rows:
         return []
 
-    # Keep the network request outside the store lock so uploads can continue.
-    query_vector = _embed_query(query.strip())
+    query = query.strip()
+    candidate_indices = _bm25_candidates(rows, query, top_k)
+    if not candidate_indices:
+        return []
 
-    with persisting._locked_store():
-        if query_vector.shape[1] != index.d:
-            raise ValueError(
-                f"query embedding dimension {query_vector.shape[1]} does not match "
-                f"index dimension {index.d}"
-            )
+    passages = [rows[index]["text"] for index in candidate_indices]
+    reranked = _rerank(query, passages)
+    if len(reranked) != len(candidate_indices):
+        raise RuntimeError(
+            f"reranker returned {len(reranked)} scores; "
+            f"expected {len(candidate_indices)}"
+        )
 
-        scores, chunk_ids = index.search(query_vector, min(top_k, index.ntotal))
-        matches = []
-        for score, chunk_id in zip(scores[0], chunk_ids[0]):
-            if chunk_id < 0:
-                continue
-            if not math.isfinite(float(score)):
-                raise ValueError("FAISS returned a non-finite similarity score")
-            similarity = float(np.clip(score, -1.0, 1.0))
-            if min_score is None or similarity >= min_score:
-                matches.append((int(chunk_id), similarity))
-
-        return _read_matches(matches)
-
-
-def _validate_index(index: Any, manifest: dict[str, Any]) -> None:
-    if manifest.get("embedding_model") != EMBEDDING_MODEL:
-        raise ValueError("query embedding model does not match the existing index")
-    if index.metric_type != faiss.METRIC_INNER_PRODUCT:
-        raise ValueError("FAISS index must use inner product for cosine similarity")
+    matches = sorted(
+        (
+            (int(rows[index]["id"]), _score_to_float(score))
+            for index, score in zip(candidate_indices, reranked)
+        ),
+        key=lambda match: (-match[1], match[0]),
+    )
+    if min_score is not None:
+        matches = [match for match in matches if match[1] >= min_score]
+    return _read_matches(matches[:top_k])
 
 
-def _embed_query(query: str) -> np.ndarray:
-    chunks = embed_chunks([{"type": "text", "text": query}])
-    vector = np.asarray([chunks[0]["vector"]], dtype=np.float32)
-    if vector.ndim != 2 or vector.shape[1] == 0:
-        raise ValueError("query embedding must be a non-empty vector")
-    if not np.all(np.isfinite(vector)):
-        raise ValueError("query embedding must contain only finite values")
-    norm = float(np.linalg.norm(vector))
-    if not math.isfinite(norm) or norm == 0:
-        raise ValueError("query embedding must have a finite, non-zero norm")
-    faiss.normalize_L2(vector)
-    return vector
+def _bm25_candidates(
+    rows: Sequence[sqlite3.Row],
+    query: str,
+    top_k: int,
+) -> list[int]:
+    tokenized_corpus = [_tokenize(row["text"]) for row in rows]
+    tokenized_query = _tokenize(query)
+    if not tokenized_query:
+        tokenized_query = [query.casefold()]
+
+    scores = np.asarray(BM25Okapi(tokenized_corpus).get_scores(tokenized_query))
+    if scores.shape != (len(rows),) or not np.all(np.isfinite(scores)):
+        raise ValueError("BM25 returned invalid candidate scores")
+
+    candidate_count = min(
+        len(rows),
+        max(top_k * BM25_CANDIDATE_MULTIPLIER, BM25_MIN_CANDIDATES),
+    )
+    return sorted(
+        range(len(rows)),
+        key=lambda index: (-float(scores[index]), int(rows[index]["id"])),
+    )[:candidate_count]
+
+
+def _tokenize(text: str) -> list[str]:
+    return [token.casefold() for token in jieba.lcut(text) if token.strip()]
+
+
+@lru_cache(maxsize=1)
+def _load_reranker() -> tuple[Any, Any, torch.device]:
+    with _RERANKER_LOCK:
+        device = _reranker_device()
+        tokenizer = AutoTokenizer.from_pretrained(RERANKER_MODEL)
+        model = AutoModelForSequenceClassification.from_pretrained(RERANKER_MODEL)
+        model.to(device)
+        model.eval()
+        return tokenizer, model, device
+
+
+def _reranker_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    mps = getattr(torch.backends, "mps", None)
+    if mps is not None and mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+def _rerank(query: str, passages: Sequence[str]) -> list[float]:
+    tokenizer, model, device = _load_reranker()
+    with _RERANKER_LOCK, torch.inference_mode():
+        inputs = tokenizer(
+            [query] * len(passages),
+            list(passages),
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        model_inputs = {name: value.to(device) for name, value in inputs.items()}
+        output = model(**model_inputs, return_dict=True)
+        logits = output.logits.reshape(-1)
+        scores = torch.sigmoid(logits).detach().cpu().tolist()
+
+    if len(scores) != len(passages) or not all(
+        math.isfinite(float(score)) for score in scores
+    ):
+        raise ValueError("reranker returned invalid scores")
+    return [float(score) for score in scores]
+
+
+def _score_to_float(score: float) -> float:
+    value = float(score)
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise ValueError("reranker returned a score outside [0, 1]")
+    return value
+
+
+def _read_chunks() -> list[sqlite3.Row]:
+    database_path = (persisting.DATA_DIRECTORY / persisting.DATABASE_FILENAME).resolve()
+    with (
+        persisting._locked_store(),
+        closing(
+            sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True)
+        ) as connection,
+    ):
+        connection.row_factory = sqlite3.Row
+        return connection.execute(
+            """
+            SELECT chunks.*, documents.file_name
+            FROM chunks
+            JOIN documents ON documents.id = chunks.document_id
+            ORDER BY chunks.id
+            """
+        ).fetchall()
 
 
 def _read_matches(matches: Sequence[tuple[int, float]]) -> list[dict[str, Any]]:
@@ -86,9 +174,12 @@ def _read_matches(matches: Sequence[tuple[int, float]]) -> list[dict[str, Any]]:
 
     database_path = (persisting.DATA_DIRECTORY / persisting.DATABASE_FILENAME).resolve()
     rows_by_id: dict[int, sqlite3.Row] = {}
-    with closing(
-        sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True)
-    ) as connection:
+    with (
+        persisting._locked_store(),
+        closing(
+            sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True)
+        ) as connection,
+    ):
         connection.row_factory = sqlite3.Row
         batch_size = connection.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
         for start in range(0, len(matches), batch_size):
@@ -112,7 +203,7 @@ def _read_matches(matches: Sequence[tuple[int, float]]) -> list[dict[str, Any]]:
         row = rows_by_id.get(chunk_id)
         if row is None:
             raise ValueError(
-                f"FAISS vector {chunk_id} has no matching chunk and document"
+                f"retrieved chunk {chunk_id} has no matching chunk and document"
             )
         metadata = json.loads(row["metadata_json"])
         if not isinstance(metadata, dict):
