@@ -5,7 +5,7 @@ from pathlib import Path
 from .chunking import chunk_blocks
 from .embedding import EMBEDDING_MODEL, embed_chunks
 from .normalizer import normalize_blocks
-from .parsers import DocxParser, ParserRegistry
+from .parsers import DocxParser, ParserRegistry, PdfParser
 from .persisting import (
     DATA_DIRECTORY,
     Document,
@@ -25,6 +25,7 @@ def build_index(document_ids: Sequence[str]) -> None:
 def process_documents(documents: Sequence[Document]) -> None:
     parser_registry = ParserRegistry()
     parser_registry.register(DocxParser)
+    parser_registry.register(PdfParser)
     errors: list[Exception] = []
 
     for document in documents:

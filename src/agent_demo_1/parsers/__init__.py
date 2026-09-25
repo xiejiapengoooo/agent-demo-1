@@ -5,6 +5,7 @@ from .base import (
     normalize_mime_type,
 )
 from .docx_parser import DocxParser
+from .pdf_parser import PdfParser
 from .providers import (
     BaseParserProvider,
     ParserProviderResult,
@@ -19,6 +20,7 @@ __all__ = [
     "ParserRegistrationError",
     "ParserRegistry",
     "ParserSource",
+    "PdfParser",
     "normalize_extension",
     "normalize_mime_type",
 ]
