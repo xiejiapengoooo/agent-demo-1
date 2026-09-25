@@ -51,7 +51,6 @@ dependencies = [
     { name = "mineru", extra = ["all"] },
     { name = "openai" },
     { name = "rank-bm25" },
-    { name = "torch" },
     { name = "transformers" },
 ]
 
@@ -68,7 +67,6 @@ requires-dist = [
     { name = "mineru", extras = ["all"], specifier = ">=3.4.5" },
     { name = "openai", specifier = ">=2.54.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "torch", specifier = ">=2.8.0" },
     { name = "transformers", specifier = ">=4.57.6" },
 ]
 
