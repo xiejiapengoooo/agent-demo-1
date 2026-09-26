@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 from .summary import image_source, image_summary
 
-KNOWN_TYPES = frozenset({"image", "table", "text"})
+KNOWN_TYPES = frozenset({"image", "table", "text", "chart"})
 
 
 def normalize_blocks(
@@ -49,6 +49,16 @@ def normalize_blocks(
                 + "\n".join(block.get("table_footnote", []))
                 + "\n"
                 + "\n".join(block.get("table_caption", []))
+                + "\n"
+            ).strip() or ""
+
+        if block.get("type") == "chart":
+            normalized["text"] = (
+                block.get("content", "")
+                + "\n"
+                + "\n".join(block.get("chart_footnote", []))
+                + "\n"
+                + "\n".join(block.get("chart_caption", []))
                 + "\n"
             ).strip() or ""
 
