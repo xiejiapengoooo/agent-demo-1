@@ -23,11 +23,15 @@ from .agents import (
 from .agents.common import last_user_text, merge_evidence
 from .config import Settings, get_settings
 from .events import execution_step
+from .skills import ExportedFile, export_chat_history
 
 
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
+    history: list[BaseMessage]
     route: NotRequired[Literal["direct", "research"]]
+    skill: NotRequired[Literal["chat-export"] | None]
+    files: NotRequired[list[ExportedFile]]
     research_goal: NotRequired[str]
     evidence: Annotated[list[Evidence], merge_evidence]
     draft: NotRequired[str]
@@ -132,6 +136,7 @@ class DocumentMultiAgent:
 
         return {
             "messages": [*history, HumanMessage(content=question.strip())],
+            "history": list(history),
             "evidence": [],
             "research_rounds": 0,
             "revision_rounds": 0,
@@ -144,20 +149,31 @@ class DocumentMultiAgent:
             raise RuntimeError("agent returned an empty answer")
         route = cast(Literal["direct", "research"], state.get("route"))
         sources = self._cited_sources(answer, state.get("evidence", []))
-        return AgentResult(answer=answer, sources=sources, route=route)
+        return AgentResult(
+            answer=answer,
+            sources=sources,
+            route=route,
+            files=state.get("files", []),
+        )
 
     def _build_graph(self) -> Any:
         builder = StateGraph(AgentState)
         builder.add_node("supervisor", self._supervisor_node)
+        builder.add_node("skill_executor", self._skill_executor_node)
         builder.add_node("researcher", self._researcher_node)
         builder.add_node("answerer", self._answerer_node)
         builder.add_node("reviewer", self._reviewer_node)
         builder.add_edge(START, "supervisor")
         builder.add_conditional_edges(
             "supervisor",
-            self._route_after_supervisor,
-            {"direct": "answerer", "research": "researcher"},
+            self._next_after_supervisor,
+            {
+                "direct": "answerer",
+                "research": "researcher",
+                "skill": "skill_executor",
+            },
         )
+        builder.add_edge("skill_executor", END)
         builder.add_edge("researcher", "answerer")
         builder.add_conditional_edges(
             "answerer",
@@ -179,9 +195,30 @@ class DocumentMultiAgent:
         with execution_step("supervisor") as progress:
             decision = self._supervisor.invoke(state["messages"])
             progress["route"] = decision.route
+            progress["skill"] = decision.skill
         return {
             "route": decision.route,
             "research_goal": (decision.research_goal or "").strip(),
+            "skill": decision.skill,
+        }
+
+    @staticmethod
+    def _skill_executor_node(state: AgentState) -> dict[str, Any]:
+        if state.get("skill") != "chat-export":
+            raise RuntimeError("unknown skill")
+        with execution_step("skill_executor", skill="chat-export") as progress:
+            with execution_step("export_chat_history", tool=True) as tool_progress:
+                exported_file = export_chat_history(state["history"])
+                files = [exported_file] if exported_file is not None else []
+                tool_progress["file_count"] = len(files)
+            progress["file_count"] = len(files)
+        return {
+            "draft": (
+                "聊天记录已导出为 Markdown，点击下方按钮下载。"
+                if files
+                else "当前没有可导出的聊天记录。"
+            ),
+            "files": files,
         }
 
     def _researcher_node(self, state: AgentState) -> dict[str, Any]:
@@ -242,6 +279,14 @@ class DocumentMultiAgent:
                 and self._route_after_review({**state, "review": decision}) == "pass"
             )
         return {"review": decision}
+
+    @staticmethod
+    def _next_after_supervisor(
+        state: AgentState,
+    ) -> Literal["direct", "research", "skill"]:
+        if state.get("skill") is not None:
+            return "skill"
+        return DocumentMultiAgent._route_after_supervisor(state)
 
     @staticmethod
     def _route_after_supervisor(

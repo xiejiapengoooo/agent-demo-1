@@ -7,6 +7,8 @@ from typing import Any, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..skills import ExportedFile
+
 
 class Source(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -26,6 +28,7 @@ class AgentResult(BaseModel):
     answer: str
     sources: list[Source]
     route: Literal["direct", "research"]
+    files: list[ExportedFile] = Field(default_factory=list)
 
 
 def merge_evidence(

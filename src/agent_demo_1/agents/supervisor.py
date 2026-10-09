@@ -5,6 +5,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
+from ..skills import CHAT_EXPORT_INSTRUCTIONS
 from .base import BaseAgent
 from .common import last_user_text
 
@@ -14,13 +15,19 @@ SUPERVISOR_PROMPT = """你是系统监督者，只负责选择处理路径。
 选择 research 的情况：问题涉及知识库中的事实、价格、规则、政策、流程，或者是对这些问题的追问。
 
 如果选择 research，请把用户问题和必要的对话上下文改写成一个独立、明确的 research_goal。
-不要回答用户问题。"""
+根据用户当前请求判断是否需要执行下方技能，历史消息仅用于理解上下文。
+需要执行时设置 skill 为技能名称；否则设置 skill 为 null。
+不要回答用户问题。
+
+【可用技能】
+""" + CHAT_EXPORT_INSTRUCTIONS
 
 
 class RouteDecision(BaseModel):
     route: Literal["direct", "research"]
     research_goal: str | None = None
     reason: str = ""
+    skill: Literal["chat-export"] | None = None
 
 
 class SupervisorAgent(BaseAgent):
@@ -38,6 +45,8 @@ class SupervisorAgent(BaseAgent):
     def invoke(self, messages: Sequence[BaseMessage]) -> RouteDecision:
         raw_decision = self._router.invoke(self._with_system_prompt(messages))
         decision = RouteDecision.model_validate(raw_decision)
+        if decision.skill is not None:
+            return decision.model_copy(update={"route": "direct", "research_goal": None})
         if decision.route == "research" and not (decision.research_goal or "").strip():
             decision = decision.model_copy(
                 update={"research_goal": last_user_text(messages)}
