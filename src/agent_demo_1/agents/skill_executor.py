@@ -12,7 +12,7 @@ from langgraph.graph import END, START, StateGraph, add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field, ValidationError
 
-from ..types import ExportedFile
+from ..skills.types import ExportedFile
 from .base import BaseAgent
 from .common import message_text
 

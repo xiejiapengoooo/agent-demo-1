@@ -7,7 +7,7 @@ from typing import Any, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..types import ExportedFile
+from ..skills.types import ExportedFile
 
 
 class Source(BaseModel):
