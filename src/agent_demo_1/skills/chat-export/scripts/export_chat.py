@@ -41,9 +41,10 @@ def main() -> None:
     parser.add_argument("--input", type=str, required=True, help="聊天记录 JSON 数组")
     arguments = parser.parse_args()
     try:
-        export_chat_history(json.load(arguments.input))
+        result = export_chat_history(json.loads(arguments.input))
     except (OSError, ValueError) as error:
         parser.exit(1, f"导出失败：{error}\n")
+    print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":

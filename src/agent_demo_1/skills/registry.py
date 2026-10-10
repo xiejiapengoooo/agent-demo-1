@@ -95,9 +95,9 @@ class SkillRegistry:
         @tool(
             "run_skill_script",
             args_schema=RunSkillScriptInput,
-            response_format="content_and_artifact",
         )
         def run_skill_script(path: str, args: list[str] | None = None) -> str:
+            """执行当前技能的 Python 脚本，返回命令输出。"""
             script = (skill_directory / path).resolve()
             if not script.is_relative_to(skill_directory):
                 raise ValueError(
@@ -125,10 +125,10 @@ class SkillRegistry:
     def _make_resource_tool(self, skill_directory: Path) -> BaseTool:
         @tool(
             "read_skill_resource",
-            args_schema=RunSkillScriptInput,
-            response_format="content_and_artifact",
+            args_schema=ReadSkillResourceInput,
         )
         def read_skill_resource(path: str) -> str:
+            """读取当前技能目录中的资源文件，返回文本内容。"""
             resource = (skill_directory / path).resolve()
             if not resource.is_relative_to(skill_directory):
                 raise ValueError("resource path escapes the selected skill directory")
