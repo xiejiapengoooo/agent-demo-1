@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from openai import APITimeoutError
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from ..agent import AgentResult, DocumentMultiAgent
+from ..agent import AgentResult, MultiAgent
 from ..events import AgentEvent
 from ..logger import get_logger
 
@@ -38,8 +38,8 @@ class ChatRequest(BaseModel):
 
 
 @lru_cache
-def get_document_agent() -> DocumentMultiAgent:
-    return DocumentMultiAgent()
+def get_document_agent() -> MultiAgent:
+    return MultiAgent()
 
 
 def _to_langchain_messages(
@@ -57,7 +57,7 @@ def _to_langchain_messages(
 @router.post("/chat", response_model=AgentResult)
 async def post_chat(
     request: ChatRequest,
-    agent: Annotated[DocumentMultiAgent, Depends(get_document_agent)],
+    agent: Annotated[MultiAgent, Depends(get_document_agent)],
 ) -> AgentResult:
     history = _to_langchain_messages(request.history)
     try:
@@ -79,7 +79,7 @@ async def post_chat(
 @router.post("/chat/stream", response_class=EventSourceResponse)
 async def post_chat_stream(
     request: ChatRequest,
-    agent: Annotated[DocumentMultiAgent, Depends(get_document_agent)],
+    agent: Annotated[MultiAgent, Depends(get_document_agent)],
 ) -> AsyncIterator[ServerSentEvent]:
     run_id = uuid4().hex
     seq = 0

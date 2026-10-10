@@ -1,9 +1,4 @@
-from pathlib import Path
+from .registry import SkillMetadata, SkillRegistry
+from .types import ExportedFile
 
-from .chat_export import ExportedFile, export_chat_history
-
-CHAT_EXPORT_INSTRUCTIONS = (
-    Path(__file__).parent / "chat-export" / "SKILL.md"
-).read_text(encoding="utf-8")
-
-__all__ = ["CHAT_EXPORT_INSTRUCTIONS", "ExportedFile", "export_chat_history"]
+__all__ = ["ExportedFile", "SkillMetadata", "SkillRegistry"]

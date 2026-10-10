@@ -50,6 +50,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "mineru", extra = ["all"] },
     { name = "openai" },
+    { name = "pyyaml" },
     { name = "rank-bm25" },
     { name = "transformers" },
 ]
@@ -66,6 +67,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.0.0" },
     { name = "mineru", extras = ["all"], specifier = ">=3.4.5" },
     { name = "openai", specifier = ">=2.54.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "transformers", specifier = ">=4.57.6" },
 ]

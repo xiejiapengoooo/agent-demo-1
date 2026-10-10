@@ -119,11 +119,12 @@
       item.classList.remove("message-pending");
       item.querySelector(".message-text").hidden = false;
       item.querySelector(".message-text").textContent = result.answer;
-      const routeLabel = result.files?.length ? "聊天导出" : result.route === "research" ? "文档检索" : "直接回答";
+      const routeLabel = result.files?.length ? "文件生成" : result.route === "research" ? "文档检索" : "直接回答";
       item.querySelector(".message-heading").append(createElement("span", "route-label", routeLabel));
       const body = item.querySelector(".message-body");
       for (const file of result.files || []) {
-        const download = createElement("a", "btn btn-primary primary-button send-button", "下载聊天记录（Markdown）");
+        const downloadLabel = /^chat-[0-9a-f]{32}\.md$/.test(file.file_name) ? "下载聊天记录（Markdown）" : `下载 ${file.file_name}`;
+        const download = createElement("a", "btn btn-primary primary-button send-button", downloadLabel);
         download.href = file.url;
         download.download = file.file_name;
         const downloadRow = createElement("p", "history-note");
@@ -173,8 +174,9 @@
           && typeof source.chunk_id === "string" && Number.isFinite(source.score))
         && (result.files === undefined || (Array.isArray(result.files)
           && result.files.every((file) => file && typeof file.file_name === "string"
-            && /^chat-[0-9a-f]{32}\.md$/.test(file.file_name)
-            && file.url === `/output/${file.file_name}`)));
+            && file.file_name && !/[\\/]/.test(file.file_name)
+            && ![".", ".."].includes(file.file_name)
+            && file.url === `/output/${encodeURIComponent(file.file_name)}`)));
     }
 
     function describeStep(event) {
@@ -182,8 +184,9 @@
       const running = event.status === "running";
       const titles = {
         supervisor: "判断回答路径",
-        skill_executor: "导出聊天记录",
-        export_chat_history: "生成 Markdown 文件",
+        skill_executor: data.skill === "chat-export" ? "导出聊天记录" : "执行技能",
+        run_skill_script: "运行技能脚本",
+        read_skill_resource: "读取技能资料",
         researcher: `收集文档证据${data.round ? ` · 第 ${data.round} 轮` : ""}`,
         search_documents: "检索知识库",
         answerer: data.revising ? "修改回答" : "整理回答",
@@ -192,10 +195,11 @@
       let detail = running ? "正在执行……" : "已完成";
       if (event.status === "error") detail = "执行失败";
       else if (!running) {
-        if (event.node === "supervisor") detail = data.skill === "chat-export" ? "准备导出聊天记录" : data.route === "research" ? "需要检索文档" : "可以直接回答";
-        if (event.node === "skill_executor" || event.node === "export_chat_history") {
+        if (event.node === "supervisor") detail = data.skill ? data.skill === "chat-export" ? "准备导出聊天记录" : "准备执行技能" : data.route === "research" ? "需要检索文档" : "可以直接回答";
+        if (event.node === "skill_executor" && data.skill === "chat-export") {
           detail = data.file_count ? "文件已生成" : "没有可导出的聊天记录";
         }
+        if (event.node === "run_skill_script" && data.file_count) detail = "文件已生成";
         if (event.node === "researcher" || event.node === "search_documents") {
           detail = data.evidence_count ? `找到 ${data.evidence_count} 条相关证据` : "未找到新的相关证据";
           if (data.file_names?.length) detail += ` · ${data.file_names.join("、")}`;

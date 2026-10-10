@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import aclosing
-from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
+from typing import Any, Literal, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_deepseek import ChatDeepSeek
-from langgraph.graph import END, START, StateGraph, add_messages
+from langgraph.graph import END, START, StateGraph
 
 from .agents import (
     AgentResult,
@@ -17,27 +17,15 @@ from .agents import (
     ReviewDecision,
     ReviewerAgent,
     RouteDecision,
+    SkillExecutorAgent,
     Source,
     SupervisorAgent,
 )
-from .agents.common import last_user_text, merge_evidence
+from .agents.common import last_user_text
 from .config import Settings, get_settings
 from .events import execution_step
-from .skills import ExportedFile, export_chat_history
-
-
-class AgentState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
-    history: list[BaseMessage]
-    route: NotRequired[Literal["direct", "research"]]
-    skill: NotRequired[Literal["chat-export"] | None]
-    files: NotRequired[list[ExportedFile]]
-    research_goal: NotRequired[str]
-    evidence: Annotated[list[Evidence], merge_evidence]
-    draft: NotRequired[str]
-    review: ReviewDecision | None
-    research_rounds: int
-    revision_rounds: int
+from .skills import SkillRegistry
+from .types import AgentState
 
 
 def _default_model(settings: Settings) -> BaseChatModel:
@@ -50,7 +38,7 @@ def _default_model(settings: Settings) -> BaseChatModel:
     )
 
 
-class DocumentMultiAgent:
+class MultiAgent:
     def __init__(
         self,
         *,
@@ -58,7 +46,9 @@ class DocumentMultiAgent:
     ) -> None:
         self.settings = settings or get_settings()
         shared_model = _default_model(self.settings)
-        self._supervisor = SupervisorAgent(shared_model)
+        self._skills = SkillRegistry()
+        self._supervisor = SupervisorAgent(shared_model, skills=self._skills)
+        self._skill_executor = SkillExecutorAgent(shared_model)
         self._researcher = ResearcherAgent(shared_model)
         self._answerer = AnswererAgent(shared_model)
         self._reviewer = ReviewerAgent(shared_model)
@@ -136,7 +126,6 @@ class DocumentMultiAgent:
 
         return {
             "messages": [*history, HumanMessage(content=question.strip())],
-            "history": list(history),
             "evidence": [],
             "research_rounds": 0,
             "revision_rounds": 0,
@@ -202,23 +191,20 @@ class DocumentMultiAgent:
             "skill": decision.skill,
         }
 
-    @staticmethod
-    def _skill_executor_node(state: AgentState) -> dict[str, Any]:
-        if state.get("skill") != "chat-export":
-            raise RuntimeError("unknown skill")
-        with execution_step("skill_executor", skill="chat-export") as progress:
-            with execution_step("export_chat_history", tool=True) as tool_progress:
-                exported_file = export_chat_history(state["history"])
-                files = [exported_file] if exported_file is not None else []
-                tool_progress["file_count"] = len(files)
-            progress["file_count"] = len(files)
+    def _skill_executor_node(self, state: AgentState) -> dict[str, Any]:
+        skill = state.get("skill")
+        if skill is None:
+            raise RuntimeError("supervisor did not select a skill")
+        with execution_step("skill_executor", skill=skill) as progress:
+            result = self._skill_executor.invoke(
+                last_user_text(state["messages"]),
+                instructions=self._skills.load(skill),
+                tools=self._skills.tools(skill),
+            )
+            progress["file_count"] = len(result.files)
         return {
-            "draft": (
-                "聊天记录已导出为 Markdown，点击下方按钮下载。"
-                if files
-                else "当前没有可导出的聊天记录。"
-            ),
-            "files": files,
+            "draft": result.answer,
+            "files": result.files,
         }
 
     def _researcher_node(self, state: AgentState) -> dict[str, Any]:
@@ -286,7 +272,7 @@ class DocumentMultiAgent:
     ) -> Literal["direct", "research", "skill"]:
         if state.get("skill") is not None:
             return "skill"
-        return DocumentMultiAgent._route_after_supervisor(state)
+        return MultiAgent._route_after_supervisor(state)
 
     @staticmethod
     def _route_after_supervisor(
@@ -299,7 +285,7 @@ class DocumentMultiAgent:
 
     @staticmethod
     def _route_after_answer(state: AgentState) -> Literal["review", "end"]:
-        route = DocumentMultiAgent._route_after_supervisor(state)
+        route = MultiAgent._route_after_supervisor(state)
         return "end" if route == "direct" else "review"
 
     def _route_after_review(
@@ -332,8 +318,8 @@ class DocumentMultiAgent:
 
 __all__ = [
     "AgentResult",
-    "DocumentMultiAgent",
     "Evidence",
+    "MultiAgent",
     "ReviewDecision",
     "RouteDecision",
     "Source",

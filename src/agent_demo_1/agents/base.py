@@ -8,7 +8,7 @@ from langchain_core.messages import BaseMessage, SystemMessage
 
 class BaseAgent(ABC):
     name: ClassVar[str]
-    system_prompt: ClassVar[str]
+    system_prompt: str
 
     def __init__(self, model: BaseChatModel) -> None:
         self.model = model

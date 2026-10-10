@@ -13,7 +13,7 @@ wheels/
 .mineru_output
 source
 data
-static/output/
+output
 mock*.*
 
 # Frontend dependencies

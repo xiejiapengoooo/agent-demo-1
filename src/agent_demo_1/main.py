@@ -40,6 +40,10 @@ def create_app() -> FastAPI:
         "/",
         StaticFiles(directory=Path("static"), html=True),
     )
+    app.mount(
+        "/output",
+        StaticFiles(directory=Path("output")),
+    )
 
     return app
 
