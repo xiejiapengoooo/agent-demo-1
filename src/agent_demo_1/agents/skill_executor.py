@@ -6,6 +6,7 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
 )
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph, add_messages
@@ -104,8 +105,17 @@ class SkillExecutorAgent(BaseAgent):
         if not answer:
             raise RuntimeError("skill_executor returned an empty response")
 
-        files = _extract_files(answer)
-        if len(files):
+        exported_files: dict[str, ExportedFile] = {}
+        for message in messages:
+            if (
+                isinstance(message, ToolMessage)
+                and message.name == "run_skill_script"
+                and message.status == "success"
+            ):
+                for file in _extract_files(message_text(message)):
+                    exported_files[file.url] = file
+        files = list(exported_files.values())
+        if files:
             answer = "点击下载文件查看"
 
         return SkillExecutionResult(answer=answer, files=files)

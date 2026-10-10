@@ -37,12 +37,14 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(doc_router)
     app.mount(
-        "/",
-        StaticFiles(directory=Path("static"), html=True),
-    )
-    app.mount(
         "/output",
         StaticFiles(directory=Path("output")),
+        name="output",
+    )
+    app.mount(
+        "/",
+        StaticFiles(directory=Path("static"), html=True),
+        name="static",
     )
 
     return app

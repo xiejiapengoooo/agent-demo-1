@@ -80,8 +80,9 @@ class SkillRegistry:
     def tools(self, name: str) -> list[BaseTool]:
         metadata = self.get(name)
         tools = []
-        if (metadata.path.parent / "scripts").is_dir():
-            tools.append(self._make_script_tool(metadata.path.parent))
+        script_dir = metadata.path.parent / "scripts"
+        if script_dir.is_dir():
+            tools.append(self._make_script_tool(script_dir))
         if any(
             (metadata.path.parent / directory).is_dir()
             for directory in ("references", "assets", "scripts")
@@ -89,7 +90,7 @@ class SkillRegistry:
             tools.append(self._make_resource_tool(metadata.path.parent))
         return tools
 
-    def _make_script_tool(self, skill_directory: Path) -> BaseTool:
+    def _make_script_tool(self, script_directory: Path) -> BaseTool:
         results: dict[str, str | None] = {}
 
         @tool(
@@ -98,8 +99,8 @@ class SkillRegistry:
         )
         def run_skill_script(path: str, args: list[str] | None = None) -> str:
             """执行当前技能的 Python 脚本，返回命令输出。"""
-            script = (skill_directory / path).resolve()
-            if not script.is_relative_to(skill_directory):
+            script = (script_directory / path).resolve()
+            if not script.is_relative_to(script_directory):
                 raise ValueError(
                     "script path escapes the selected skill's scripts directory"
                 )
